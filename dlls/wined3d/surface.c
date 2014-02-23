@@ -100,6 +100,13 @@ static void surface_cleanup(struct wined3d_surface *surface)
         overlay->overlay_dest = NULL;
     }
 
+    // fbdev hack
+    if (surface->fbdev)
+    {
+        HeapFree(GetProcessHeap(), 0, surface->fbdev);
+        surface->fbdev = NULL;
+    }
+
     resource_cleanup(&surface->resource);
 }
 
@@ -1410,6 +1417,8 @@ static void gdi_surface_realize_palette(struct wined3d_surface *surface)
         }
         SetDIBColorTable(surface->hDC, 0, 256, col);
     }
+
+    fbdev_realize_palette(surface);
 
     /* Update the image because of the palette change. Some games like e.g.
      * Red Alert call SetEntries a lot to implement fading. */

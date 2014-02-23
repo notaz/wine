@@ -643,6 +643,12 @@ void x11_copy_to_screen(const struct wined3d_swapchain *swapchain, const RECT *r
         }
     }
 
+#if 1
+    if (!swapchain->desc.windowed)
+        if (fbdev_to_screen(front, rect))
+            return;
+#endif
+
     TRACE("Copying surface %p to screen.\n", front);
 
     surface_load_location(front, WINED3D_LOCATION_DIB);

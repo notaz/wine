@@ -30,6 +30,7 @@ C_SRCS = \
 	vertexdeclaration.c \
 	view.c \
 	volume.c \
+	fbdev.c \
 	wined3d_main.c
 
 RC_SRCS = version.rc

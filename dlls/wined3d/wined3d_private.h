@@ -2235,6 +2235,9 @@ struct wined3d_surface
     struct wined3d_surface *overlay_dest;
     struct list               overlays;
     struct list               overlay_entry;
+
+    /* fbdev hack */
+    struct fbdev_state *fbdev;
 };
 
 static inline struct wined3d_surface *surface_from_resource(struct wined3d_resource *resource)
@@ -3045,5 +3048,9 @@ static inline void context_apply_state(struct wined3d_context *context,
 #define WINED3D_OPENGL_WINDOW_CLASS_NAME "WineD3D_OpenGL"
 
 #define MAKEDWORD_VERSION(maj, min) (((maj & 0xffff) << 16) | (min & 0xffff))
+
+/* fbdev hack */
+int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect);
+void fbdev_realize_palette(struct wined3d_surface *surface);
 
 #endif
