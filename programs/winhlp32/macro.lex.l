@@ -342,7 +342,7 @@ BOOL MACRO_ExecuteMacro(WINHELP_WINDOW* window, LPCSTR macro)
             break;
         default:
             WINE_WARN("got unexpected type %s\n", ts(t));
-            YY_FLUSH_BUFFER;
+            /*YY_FLUSH_BUFFER;*/
             ret = FALSE;
             goto done;
         }
@@ -350,7 +350,7 @@ BOOL MACRO_ExecuteMacro(WINHELP_WINDOW* window, LPCSTR macro)
         {
         case EMPTY:     goto done;
         case ';':       break;
-        default:        ret = FALSE; YY_FLUSH_BUFFER; goto done;
+        default:        ret = FALSE; /*YY_FLUSH_BUFFER;*/ goto done;
         }
     }
 
