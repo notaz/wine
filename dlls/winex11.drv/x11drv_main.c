@@ -584,6 +584,8 @@ static BOOL process_attach(void)
 #endif
     X11DRV_XInput2_Init();
 
+    X11DRV_fbdev_Init();
+
 #ifdef HAVE_XKB
     if (use_xkb) use_xkb = XkbUseExtension( gdi_display, NULL, NULL );
 #endif

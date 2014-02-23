@@ -28,6 +28,7 @@ C_SRCS = \
 	xinerama.c \
 	xrandr.c \
 	xrender.c \
-	xvidmode.c
+	xvidmode.c \
+	fbdev.c
 
 RC_SRCS = version.rc
