@@ -1423,8 +1423,12 @@ static void gdi_surface_realize_palette(struct wined3d_surface *surface)
     /* Update the image because of the palette change. Some games like e.g.
      * Red Alert call SetEntries a lot to implement fading. */
     /* Tell the swapchain to update the screen. */
+
+#if 0
+    /* fbdev: causes artifacts.. */
     if (surface->swapchain && surface == surface->swapchain->front_buffer)
         x11_copy_to_screen(surface->swapchain, NULL);
+#endif
 }
 
 static void gdi_surface_unmap(struct wined3d_surface *surface)
