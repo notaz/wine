@@ -36,6 +36,9 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(fbdev);
 
+int input_pos_ofs_x;
+int input_pos_ofs_y;
+
 #define MODE_COUNT 4
 static struct x11drv_mode_info *dd_modes;
 static int fd;
@@ -139,6 +142,9 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
     if (ret != 0)
       perror("OMAPFB_SETUP_PLANE ioctl (after)");
   }
+
+  input_pos_ofs_x = -newpos_x;
+  input_pos_ofs_y = -newpos_y;
 
   // ?
   XWarpPointer(gdi_display, None, DefaultRootWindow(gdi_display), 0, 0, 0, 0, 0, 0);

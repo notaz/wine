@@ -1522,8 +1522,8 @@ void X11DRV_ButtonPress( HWND hwnd, XEvent *xev )
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, event->x, event->y );
 
-    input.u.mi.dx          = event->x;
-    input.u.mi.dy          = event->y;
+    input.u.mi.dx          = event->x + input_pos_ofs_x;
+    input.u.mi.dy          = event->y + input_pos_ofs_y;
     input.u.mi.mouseData   = button_down_data[buttonNum];
     input.u.mi.dwFlags     = button_down_flags[buttonNum] | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1547,8 +1547,8 @@ void X11DRV_ButtonRelease( HWND hwnd, XEvent *xev )
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, event->x, event->y );
 
-    input.u.mi.dx          = event->x;
-    input.u.mi.dy          = event->y;
+    input.u.mi.dx          = event->x + input_pos_ofs_x;
+    input.u.mi.dy          = event->y + input_pos_ofs_y;
     input.u.mi.mouseData   = button_up_data[buttonNum];
     input.u.mi.dwFlags     = button_up_flags[buttonNum] | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1569,8 +1569,8 @@ void X11DRV_MotionNotify( HWND hwnd, XEvent *xev )
     TRACE( "hwnd %p/%lx pos %d,%d is_hint %d serial %lu\n",
            hwnd, event->window, event->x, event->y, event->is_hint, event->serial );
 
-    input.u.mi.dx          = event->x;
-    input.u.mi.dy          = event->y;
+    input.u.mi.dx          = event->x + input_pos_ofs_x;
+    input.u.mi.dy          = event->y + input_pos_ofs_y;
     input.u.mi.mouseData   = 0;
     input.u.mi.dwFlags     = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1600,8 +1600,8 @@ void X11DRV_EnterNotify( HWND hwnd, XEvent *xev )
     if (event->window == x11drv_thread_data()->grab_window) return;
 
     /* simulate a mouse motion event */
-    input.u.mi.dx          = event->x;
-    input.u.mi.dy          = event->y;
+    input.u.mi.dx          = event->x + input_pos_ofs_x;
+    input.u.mi.dy          = event->y + input_pos_ofs_y;
     input.u.mi.mouseData   = 0;
     input.u.mi.dwFlags     = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );

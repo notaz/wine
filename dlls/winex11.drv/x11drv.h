@@ -682,4 +682,8 @@ static inline BOOL is_window_rect_fullscreen( const RECT *rect )
             rect->top <= primary_rect.top && rect->bottom >= primary_rect.bottom);
 }
 
+/* fbdev mouse input hack */
+extern int input_pos_ofs_x DECLSPEC_HIDDEN;
+extern int input_pos_ofs_y DECLSPEC_HIDDEN;
+
 #endif  /* __WINE_X11DRV_H */
