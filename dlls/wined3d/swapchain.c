@@ -623,6 +623,26 @@ void x11_copy_to_screen(const struct wined3d_swapchain *swapchain, const RECT *r
     if (front->resource.map_count)
         ERR("Trying to blit a mapped surface.\n");
 
+    /* FPS support */
+    if (TRACE_ON(fps) && (rect == NULL ||
+        (rect->left == 0 && rect->top == 0 &&
+         rect->right == front->resource.width &&
+         rect->bottom == front->resource.height)))
+    {
+        static LONG prev_time, frames;
+        DWORD time = GetTickCount();
+
+        ++frames;
+
+        /* every 1.5 seconds */
+        if (time - prev_time > 1500)
+        {
+            TRACE_(fps)("@ approx %.2ffps\n", 1000.0f * frames / (time - prev_time));
+            prev_time = time;
+            frames = 0;
+        }
+    }
+
     TRACE("Copying surface %p to screen.\n", front);
 
     surface_load_location(front, WINED3D_LOCATION_DIB);
@@ -689,23 +709,6 @@ static void swapchain_gdi_present(struct wined3d_swapchain *swapchain, const REC
 
         if (back->resource.heap_memory)
             ERR("GDI Surface %p has heap memory allocated.\n", back);
-    }
-
-    /* FPS support */
-    if (TRACE_ON(fps))
-    {
-        static LONG prev_time, frames;
-        DWORD time = GetTickCount();
-
-        ++frames;
-
-        /* every 1.5 seconds */
-        if (time - prev_time > 1500)
-        {
-            TRACE_(fps)("@ approx %.2ffps\n", 1000.0 * frames / (time - prev_time));
-            prev_time = time;
-            frames = 0;
-        }
     }
 
     x11_copy_to_screen(swapchain, NULL);
