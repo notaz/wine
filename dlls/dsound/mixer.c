@@ -142,10 +142,9 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	dsb->freqAcc = 0;
 
 	dsb->get_aux = ieee ? getbpp[4] : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
-	dsb->put_aux = putieee32;
 
 	dsb->get = dsb->get_aux;
-	dsb->put = dsb->put_aux;
+	dsb->put = putint;
 
 	if (ichannels == ochannels)
 	{
@@ -227,18 +226,18 @@ void DSOUND_CheckEvent(const IDirectSoundBufferImpl *dsb, DWORD playpos, int len
 	}
 }
 
-static inline float get_current_sample(const IDirectSoundBufferImpl *dsb,
+static inline int get_current_sample(const IDirectSoundBufferImpl *dsb,
         DWORD mixpos, DWORD channel)
 {
     if (mixpos >= dsb->buflen && !(dsb->playflags & DSBPLAY_LOOPING))
-        return 0.0f;
-    return dsb->get(dsb, mixpos % dsb->buflen, channel);
+        return 0;
+    return (int)(dsb->get(dsb, mixpos % dsb->buflen, channel) * 32767.0f);
 }
 
 static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
 {
     UINT istride = dsb->pwfx->nBlockAlign;
-    UINT ostride = dsb->device->pwfx->nChannels * sizeof(float);
+    UINT ostride = dsb->device->pwfx->nChannels * sizeof(int);
     DWORD channel, i;
     for (i = 0; i < count; i++)
         for (channel = 0; channel < dsb->mix_channels; channel++)
@@ -276,8 +275,9 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *f
     float* itmp = intermediate;
     for (channel = 0; channel < channels; channel++)
         for (i = 0; i < required_input; i++)
-            *(itmp++) = get_current_sample(dsb,
-                    dsb->sec_mixpos + i * istride, channel);
+            *(itmp++) = (float)get_current_sample(dsb,
+                    dsb->sec_mixpos + i * istride, channel)
+	    		/ 32767.0f;
 
     for(i = 0; i < count; ++i) {
         float total_fir_steps = (freqAcc_start + i * freqAdjust) * dsbfirstep;
@@ -302,7 +302,7 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *f
             float* cache = &intermediate[channel * required_input + ipos];
             for (j = 0; j < fir_used; j++)
                 sum += fir_copy[j] * cache[j];
-            dsb->put(dsb, i * ostride, channel, sum * dsb->firgain);
+            dsb->put(dsb, i * ostride, channel, sum * dsb->firgain * 32767.0f);
         }
     }
 
@@ -367,7 +367,7 @@ static inline DWORD DSOUND_BufPtrDiff(DWORD buflen, DWORD ptr1, DWORD ptr2)
  */
 static void DSOUND_MixToTemporary(IDirectSoundBufferImpl *dsb, DWORD frames)
 {
-	UINT size_bytes = frames * sizeof(float) * dsb->device->pwfx->nChannels;
+	UINT size_bytes = frames * sizeof(int) * dsb->device->pwfx->nChannels;
 
 	if (dsb->device->tmp_buffer_len < size_bytes || !dsb->device->tmp_buffer)
 	{
@@ -384,7 +384,7 @@ static void DSOUND_MixToTemporary(IDirectSoundBufferImpl *dsb, DWORD frames)
 static void DSOUND_MixerVol(const IDirectSoundBufferImpl *dsb, INT frames)
 {
 	INT	i;
-	float vLeft, vRight;
+	unsigned int vLeft, vRight;
 	UINT channels = dsb->device->pwfx->nChannels, chan;
 
 	TRACE("(%p,%d)\n",dsb,frames);
@@ -402,14 +402,15 @@ static void DSOUND_MixerVol(const IDirectSoundBufferImpl *dsb, INT frames)
 		return;
 	}
 
-	vLeft = dsb->volpan.dwTotalLeftAmpFactor / ((float)0xFFFF);
-	vRight = dsb->volpan.dwTotalRightAmpFactor / ((float)0xFFFF);
+	vLeft = dsb->volpan.dwTotalLeftAmpFactor;
+	vRight = dsb->volpan.dwTotalRightAmpFactor;
 	for(i = 0; i < frames; ++i){
 		for(chan = 0; chan < channels; ++chan){
+			int *s = &dsb->device->tmp_buffer[i * channels + chan];
 			if(chan == 0)
-				dsb->device->tmp_buffer[i * channels + chan] *= vLeft;
+				*s = (long long)*s * vLeft >> 16;
 			else
-				dsb->device->tmp_buffer[i * channels + chan] *= vRight;
+				*s = (long long)*s * vRight >> 16;
 		}
 	}
 }
@@ -430,7 +431,7 @@ static void DSOUND_MixerVol(const IDirectSoundBufferImpl *dsb, INT frames)
 static DWORD DSOUND_MixInBuffer(IDirectSoundBufferImpl *dsb, DWORD writepos, DWORD fraglen)
 {
 	INT len = fraglen;
-	float *ibuf;
+	int *ibuf;
 	DWORD oldpos;
 	UINT frames = fraglen / dsb->device->pwfx->nBlockAlign;
 
@@ -662,8 +663,8 @@ static void DSOUND_WaveQueue(DirectSoundDevice *device, BOOL force)
  * The mixing procedure goes:
  *
  * secondary->buffer (secondary format)
- *   =[Resample]=> device->tmp_buffer (float format)
- *   =[Volume]=> device->tmp_buffer (float format)
+ *   =[Resample]=> device->tmp_buffer (int format)
+ *   =[Volume]=> device->tmp_buffer (int format)
  *   =[Mix]=> device->mix_buffer (float format)
  *   =[Reformat]=> device->buffer (device format)
  */

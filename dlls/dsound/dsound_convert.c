@@ -152,24 +152,24 @@ static inline LONG f_to_32(float value)
     return le32(lrintf(value * 0x80000000U));
 }
 
-void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+void putint(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value)
 {
     BYTE *buf = (BYTE *)dsb->device->tmp_buffer;
-    float *fbuf = (float*)(buf + pos + sizeof(float) * channel);
+    int *fbuf = (int*)(buf + pos + sizeof(int) * channel);
     *fbuf = value;
 }
 
-void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value)
+void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value)
 {
-    dsb->put_aux(dsb, pos, 0, value);
-    dsb->put_aux(dsb, pos, 1, value);
+    putint(dsb, pos, 0, value);
+    putint(dsb, pos, 1, value);
 }
 
-void mixieee32(float *src, float *dst, unsigned samples)
+void mixieee32(int *src, float *dst, unsigned samples)
 {
     TRACE("%p - %p %d\n", src, dst, samples);
     while (samples--)
-        *(dst++) += *(src++);
+        *(dst++) += *(src++) / 32767.0f;
 }
 
 static void norm8(float *src, unsigned char *dst, unsigned len)

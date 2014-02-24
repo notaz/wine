@@ -41,10 +41,10 @@ typedef struct DirectSoundDevice             DirectSoundDevice;
 
 /* dsound_convert.h */
 typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD);
-typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD, float);
+typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD, int);
 extern const bitsgetfunc getbpp[5] DECLSPEC_HIDDEN;
-void putieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value) DECLSPEC_HIDDEN;
-void mixieee32(float *src, float *dst, unsigned samples) DECLSPEC_HIDDEN;
+void putint(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value) DECLSPEC_HIDDEN;
+void mixieee32(int *src, float *dst, unsigned samples) DECLSPEC_HIDDEN;
 typedef void (*normfunc)(const void *, void *, unsigned);
 extern const normfunc normfunctions[5] DECLSPEC_HIDDEN;
 
@@ -80,7 +80,8 @@ struct DirectSoundDevice
     CRITICAL_SECTION            mixlock;
     IDirectSoundBufferImpl     *primary;
     DWORD                       speaker_config;
-    float *mix_buffer, *tmp_buffer;
+    float *mix_buffer;
+    int *tmp_buffer;
     DWORD                       tmp_buffer_len, mix_buffer_len;
 
     DSVOLUMEPAN                 volpan;
@@ -168,13 +169,13 @@ struct IDirectSoundBufferImpl
     /* Used for bit depth conversion */
     int                         mix_channels;
     bitsgetfunc get, get_aux;
-    bitsputfunc put, put_aux;
+    bitsputfunc put;
 
     struct list entry;
 };
 
 float get_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel) DECLSPEC_HIDDEN;
-void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, float value) DECLSPEC_HIDDEN;
+void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value) DECLSPEC_HIDDEN;
 
 HRESULT IDirectSoundBufferImpl_Create(
     DirectSoundDevice *device,
