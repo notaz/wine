@@ -1764,11 +1764,16 @@ static HRESULT WINAPI AudioClient_GetMixFormat(IAudioClient *iface,
 
     snd_pcm_hw_params_get_format_mask(This->hw_params, formats);
 
+#if 0
     fmt->Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
     if(snd_pcm_format_mask_test(formats, SND_PCM_FORMAT_FLOAT_LE)){
         fmt->Format.wBitsPerSample = 32;
         fmt->SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-    }else if(snd_pcm_format_mask_test(formats, SND_PCM_FORMAT_S16_LE)){
+    }else
+#else
+    fmt->Format.wFormatTag = WAVE_FORMAT_PCM;
+#endif
+    if(snd_pcm_format_mask_test(formats, SND_PCM_FORMAT_S16_LE)){
         fmt->Format.wBitsPerSample = 16;
         fmt->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
     }else if(snd_pcm_format_mask_test(formats, SND_PCM_FORMAT_U8)){
@@ -1807,9 +1812,12 @@ static HRESULT WINAPI AudioClient_GetMixFormat(IAudioClient *iface,
         goto exit;
     }
 
+#if 0
     if(max_rate >= 48000)
         fmt->Format.nSamplesPerSec = 48000;
-    else if(max_rate >= 44100)
+    else 
+#endif
+    if(max_rate >= 44100)
         fmt->Format.nSamplesPerSec = 44100;
     else if(max_rate >= 22050)
         fmt->Format.nSamplesPerSec = 22050;
