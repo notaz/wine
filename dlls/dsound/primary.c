@@ -279,7 +279,7 @@ HRESULT DSOUND_PrimaryOpen(DirectSoundDevice *device)
 	}
 
 	HeapFree(GetProcessHeap(), 0, device->mix_buffer);
-	device->mix_buffer_len = (device->buflen / (device->pwfx->wBitsPerSample / 8)) * sizeof(float);
+	device->mix_buffer_len = (device->buflen / (device->pwfx->wBitsPerSample / 8)) * sizeof(int);
 	device->mix_buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, device->mix_buffer_len);
 	if (!device->mix_buffer)
 		return DSERR_OUTOFMEMORY;

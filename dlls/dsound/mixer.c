@@ -453,7 +453,7 @@ static DWORD DSOUND_MixInBuffer(IDirectSoundBufferImpl *dsb, DWORD writepos, DWO
 	/* Apply volume if needed */
 	DSOUND_MixerVol(dsb, frames);
 
-	mixieee32(ibuf, dsb->device->mix_buffer, frames * dsb->device->pwfx->nChannels);
+	mixint32(ibuf, dsb->device->mix_buffer, frames * dsb->device->pwfx->nChannels);
 
 	/* check for notification positions */
 	if (dsb->dsbd.dwFlags & DSBCAPS_CTRLPOSITIONNOTIFY &&
@@ -665,7 +665,7 @@ static void DSOUND_WaveQueue(DirectSoundDevice *device, BOOL force)
  * secondary->buffer (secondary format)
  *   =[Resample]=> device->tmp_buffer (int format)
  *   =[Volume]=> device->tmp_buffer (int format)
- *   =[Mix]=> device->mix_buffer (float format)
+ *   =[Mix]=> device->mix_buffer (int format)
  *   =[Reformat]=> device->buffer (device format)
  */
 static void DSOUND_PerformMix(DirectSoundDevice *device)

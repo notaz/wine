@@ -59,6 +59,16 @@ WINE_DEFAULT_DEBUG_CHANNEL(dsound);
 #define le32(x) (x)
 #endif
 
+#ifdef __ARM_ARCH_7A__
+ #define ssat32_to_16(v) \
+  asm("ssat %0,#16,%1" : "=r" (v) : "r" (v))
+#else
+ #define ssat32_to_16(v) do { \
+  if (v < -32768) v = -32768; \
+  else if (v > 32767) v = 32767; \
+ } while (0)
+#endif
+
 static float get8(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     const BYTE* buf = dsb->buffer->memory;
@@ -134,7 +144,7 @@ static inline SHORT f_to_16(float value)
     return le16(lrintf(value * 0x8000));
 }
 
-static LONG f_to_24(float value)
+static inline LONG f_to_24(float value)
 {
     if(value <= -1.f)
         return 0x80000000;
@@ -165,43 +175,50 @@ void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel
     putint(dsb, pos, 1, value);
 }
 
-void mixieee32(int *src, float *dst, unsigned samples)
+void mixint32(int *src, int *dst, unsigned samples)
 {
     TRACE("%p - %p %d\n", src, dst, samples);
     while (samples--)
-        *(dst++) += *(src++) / 32767.0f;
+        *(dst++) += *(src++);
 }
 
-static void norm8(float *src, unsigned char *dst, unsigned len)
+static void norm8(int *src, unsigned char *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
     while (len--)
     {
-        *dst = f_to_8(*src);
+        int l = *src;
+        ssat32_to_16(l);
+        *dst = (l >> 8) + 0x80;
         ++dst;
         ++src;
     }
 }
 
-static void norm16(float *src, SHORT *dst, unsigned len)
+static void norm16(int *src, SHORT *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
     len /= 2;
     while (len--)
     {
-        *dst = f_to_16(*src);
+        int l = *src;
+        ssat32_to_16(l);
+        *dst = le16(l);
         ++dst;
         ++src;
     }
 }
 
-static void norm24(float *src, BYTE *dst, unsigned len)
+static void norm24(int *src, BYTE *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
     len /= 3;
     while (len--)
     {
-        LONG t = f_to_24(*src);
+        LONG t;
+        int l = *src;
+        ssat32_to_16(l);
+        t = l << 8;;
         dst[0] = (t >> 8) & 0xFF;
         dst[1] = (t >> 16) & 0xFF;
         dst[2] = t >> 24;
@@ -210,30 +227,29 @@ static void norm24(float *src, BYTE *dst, unsigned len)
     }
 }
 
-static void norm32(float *src, INT *dst, unsigned len)
+static void norm32(int *src, INT *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
     len /= 4;
     while (len--)
     {
-        *dst = f_to_32(*src);
+        int l = *src;
+        ssat32_to_16(l);
+        *dst = le32(l << 16);
         ++dst;
         ++src;
     }
 }
 
-static void normieee32(float *src, float *dst, unsigned len)
+static void normieee32(int *src, float *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
     len /= 4;
     while (len--)
     {
-        if(*src > 1)
-            *dst = 1;
-        else if(*src < -1)
-            *dst = -1;
-        else
-            *dst = *src;
+        int l = *src;
+        ssat32_to_16(l);
+        *dst = (float)l / 32768.0f;
         ++dst;
         ++src;
     }

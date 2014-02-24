@@ -44,7 +44,7 @@ typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD);
 typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD, int);
 extern const bitsgetfunc getbpp[5] DECLSPEC_HIDDEN;
 void putint(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value) DECLSPEC_HIDDEN;
-void mixieee32(int *src, float *dst, unsigned samples) DECLSPEC_HIDDEN;
+void mixint32(int *src, int *dst, unsigned samples) DECLSPEC_HIDDEN;
 typedef void (*normfunc)(const void *, void *, unsigned);
 extern const normfunc normfunctions[5] DECLSPEC_HIDDEN;
 
@@ -80,7 +80,7 @@ struct DirectSoundDevice
     CRITICAL_SECTION            mixlock;
     IDirectSoundBufferImpl     *primary;
     DWORD                       speaker_config;
-    float *mix_buffer;
+    int *mix_buffer;
     int *tmp_buffer;
     DWORD                       tmp_buffer_len, mix_buffer_len;
 
