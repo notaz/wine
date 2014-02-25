@@ -22,6 +22,7 @@
 #include "config.h"
 
 #include <stdarg.h>
+#include <stdlib.h>
 #include <math.h>
 
 #include "windef.h"
@@ -1829,6 +1830,13 @@ static HRESULT WINAPI AudioClient_GetMixFormat(IAudioClient *iface,
         ERR("Unknown max rate: %u\n", max_rate);
         hr = AUDCLNT_E_DEVICE_INVALIDATED;
         goto exit;
+    }
+
+    {
+        /* yet another HACK */
+        const char *forcesetting = getenv("WINE_SND_FORCE_RATE");
+        if (forcesetting != NULL)
+            fmt->Format.nSamplesPerSec = atoi(forcesetting);
     }
 
     fmt->Format.nBlockAlign = (fmt->Format.wBitsPerSample *
