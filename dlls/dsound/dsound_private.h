@@ -40,7 +40,7 @@ typedef struct IDirectSoundBufferImpl        IDirectSoundBufferImpl;
 typedef struct DirectSoundDevice             DirectSoundDevice;
 
 /* dsound_convert.h */
-typedef float (*bitsgetfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD);
+typedef int (*bitsgetfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD);
 typedef void (*bitsputfunc)(const IDirectSoundBufferImpl *, DWORD, DWORD, int);
 extern const bitsgetfunc getbpp[5] DECLSPEC_HIDDEN;
 void putint(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value) DECLSPEC_HIDDEN;
@@ -174,7 +174,7 @@ struct IDirectSoundBufferImpl
     struct list entry;
 };
 
-float get_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel) DECLSPEC_HIDDEN;
+int get_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel) DECLSPEC_HIDDEN;
 void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel, int value) DECLSPEC_HIDDEN;
 
 HRESULT IDirectSoundBufferImpl_Create(

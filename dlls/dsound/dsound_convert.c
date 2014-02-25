@@ -69,22 +69,21 @@ WINE_DEFAULT_DEBUG_CHANNEL(dsound);
  } while (0)
 #endif
 
-static float get8(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
+static int get8(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     const BYTE* buf = dsb->buffer->memory;
     buf += pos + channel;
-    return (buf[0] - 0x80) / (float)0x80;
+    return (short)((buf[0] - 0x80) << 8);
 }
 
-static float get16(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
+static int get16(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     const BYTE* buf = dsb->buffer->memory;
     const SHORT *sbuf = (const SHORT*)(buf + pos + 2 * channel);
-    SHORT sample = (SHORT)le16(*sbuf);
-    return sample / (float)0x8000;
+    return le16(*sbuf);
 }
 
-static float get24(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
+static int get24(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     LONG sample;
     const BYTE* buf = dsb->buffer->memory;
@@ -93,32 +92,32 @@ static float get24(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
        this is how negative values are made.
      */
     sample = (buf[0] << 8) | (buf[1] << 16) | (buf[2] << 24);
-    return sample / (float)0x80000000U;
+    return sample >> 8;
 }
 
-static float get32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
+static int get32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     const BYTE* buf = dsb->buffer->memory;
     const LONG *sbuf = (const LONG*)(buf + pos + 4 * channel);
-    LONG sample = le32(*sbuf);
-    return sample / (float)0x80000000U;
+    return le32(*sbuf) >> 16;
 }
 
-static float getieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
+static int getieee32(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     const BYTE* buf = dsb->buffer->memory;
     const float *sbuf = (const float*)(buf + pos + 4 * channel);
-    /* The value will be clipped later, when put into some non-float buffer */
-    return *sbuf;
+    int l = *sbuf * 32767.0f;
+    ssat32_to_16(l);
+    return l;
 }
 
 const bitsgetfunc getbpp[5] = {get8, get16, get24, get32, getieee32};
 
-float get_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
+int get_mono(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel)
 {
     DWORD channels = dsb->pwfx->nChannels;
     DWORD c;
-    float val = 0;
+    int val = 0;
     /* XXX: does Windows include LFE into the mix? */
     for (c = 0; c < channels; c++)
         val += dsb->get_aux(dsb, pos, c);

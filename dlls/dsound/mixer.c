@@ -231,7 +231,27 @@ static inline int get_current_sample(const IDirectSoundBufferImpl *dsb,
 {
     if (mixpos >= dsb->buflen && !(dsb->playflags & DSBPLAY_LOOPING))
         return 0;
-    return (int)(dsb->get(dsb, mixpos % dsb->buflen, channel) * 32767.0f);
+    return dsb->get(dsb, mixpos % dsb->buflen, channel);
+}
+
+static inline void put32from16(int *dst, short *src, unsigned int count)
+{
+    for (; count >= 4; count -= 4) {
+        *dst++ = *src++;
+        *dst++ = *src++;
+        *dst++ = *src++;
+        *dst++ = *src++;
+    }
+    for (; count > 0; count--)
+        *dst++ = *src++;
+}
+
+static inline void put32from16mono(int *dst, short *src, unsigned int count)
+{
+    for (; count > 0; count--) {
+        *dst++ = *src;
+        *dst++ = *src++;
+    }
 }
 
 static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
@@ -239,6 +259,60 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
     UINT istride = dsb->pwfx->nBlockAlign;
     UINT ostride = dsb->device->pwfx->nChannels * sizeof(int);
     DWORD channel, i;
+
+#if 1
+    DWORD cut;
+    if (!(dsb->playflags & DSBPLAY_LOOPING)) {
+        if (dsb->sec_mixpos >= dsb->buflen) {
+            memset(dsb->device->tmp_buffer, 0, count * ostride);
+            return count;
+        }
+
+        if (dsb->sec_mixpos + count * istride > dsb->buflen) {
+            cut = dsb->sec_mixpos + count * istride - dsb->buflen;
+            cut /= istride;
+            count -= cut;
+            memset((BYTE *)dsb->device->tmp_buffer + count * ostride,
+                   0, cut * ostride);
+        }
+    }
+
+    if (dsb->pwfx->wBitsPerSample == 16) {
+        DWORD mixpos = dsb->sec_mixpos;
+        short *src = (short *)((BYTE *)dsb->buffer->memory + mixpos);
+        int *dst = dsb->device->tmp_buffer;
+
+        if (dsb->device->pwfx->nChannels == dsb->mix_channels) {
+            DWORD words = count * dsb->mix_channels;
+            while (words > 0) {
+                cut = (dsb->buflen - mixpos) / 2;
+                if (cut > words)
+                    cut = words;
+                put32from16(dst, src, cut);
+                src = (short *)dsb->buffer->memory;
+                mixpos = 0;
+                dst += cut;
+                words -= cut;
+            }
+            return count;
+        }
+        if (dsb->device->pwfx->nChannels == 2 && dsb->mix_channels == 1) {
+            DWORD words = count;
+            while (words > 0) {
+                cut = (dsb->buflen - mixpos) / 2;
+                if (cut > words)
+                    cut = words;
+                put32from16mono(dst, src, cut);
+                src = (short *)dsb->buffer->memory;
+                mixpos = 0;
+                dst += cut * 2;
+                words -= cut;
+            }
+            return count;
+        }
+    }
+#endif
+
     for (i = 0; i < count; i++)
         for (channel = 0; channel < dsb->mix_channels; channel++)
             dsb->put(dsb, i * ostride, channel, get_current_sample(dsb,
