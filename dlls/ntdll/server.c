@@ -1197,8 +1197,8 @@ static int server_connect(void)
 
     /* make sure we are at the right place */
     if (stat( ".", &st ) == -1) fatal_perror( "stat %s", serverdir );
-    if (st.st_uid != getuid()) fatal_error( "'%s' is not owned by you\n", serverdir );
-    if (st.st_mode & 077) fatal_error( "'%s' must not be accessible by other users\n", serverdir );
+    //if (st.st_uid != getuid()) fatal_error( "'%s' is not owned by you\n", serverdir );
+    //if (st.st_mode & 077) fatal_error( "'%s' must not be accessible by other users\n", serverdir );
 
     for (retry = 0; retry < 6; retry++)
     {
@@ -1219,8 +1219,8 @@ static int server_connect(void)
         /* make sure the socket is sane (ISFIFO needed for Solaris) */
         if (!S_ISSOCK(st.st_mode) && !S_ISFIFO(st.st_mode))
             fatal_error( "'%s/%s' is not a socket\n", serverdir, SOCKETNAME );
-        if (st.st_uid != getuid())
-            fatal_error( "'%s/%s' is not owned by you\n", serverdir, SOCKETNAME );
+        //if (st.st_uid != getuid())
+        //    fatal_error( "'%s/%s' is not owned by you\n", serverdir, SOCKETNAME );
 
         /* try to connect to it */
         addr.sun_family = AF_UNIX;
