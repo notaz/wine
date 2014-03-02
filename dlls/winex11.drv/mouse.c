@@ -545,8 +545,8 @@ static void send_mouse_input( HWND hwnd, Window window, unsigned int state, INPU
             sync_window_cursor( window );
             last_cursor_change = input->u.mi.time;
         }
-        input->u.mi.dx += clip_rect.left;
-        input->u.mi.dy += clip_rect.top;
+        input->u.mi.dx += clip_rect.left + input_pos_ofs_x;
+        input->u.mi.dy += clip_rect.top  + input_pos_ofs_y;
         __wine_send_input( hwnd, input );
         return;
     }
@@ -607,8 +607,8 @@ static void send_mouse_input( HWND hwnd, Window window, unsigned int state, INPU
         SERVER_END_REQ;
     }
 
-    input->u.mi.dx = pt.x;
-    input->u.mi.dy = pt.y;
+    input->u.mi.dx = pt.x + input_pos_ofs_x;
+    input->u.mi.dy = pt.y + input_pos_ofs_y;
     __wine_send_input( hwnd, input );
 }
 
@@ -1372,7 +1372,7 @@ BOOL CDECL X11DRV_GetCursorPos(LPPOINT pos)
     if (ret)
     {
         POINT old = *pos;
-        *pos = root_to_virtual_screen( winX, winY );
+        *pos = root_to_virtual_screen( winX + input_pos_ofs_x, winY + input_pos_ofs_y );
         TRACE( "pointer at (%d,%d) server pos %d,%d\n", pos->x, pos->y, old.x, old.y );
     }
     return ret;
@@ -1476,6 +1476,8 @@ void move_resize_window( HWND hwnd, int dir )
         int x, y, rootX, rootY;
 
         if (!XQueryPointer( display, root_window, &root, &child, &rootX, &rootY, &x, &y, &xstate )) break;
+        x += input_pos_ofs_x;
+        y += input_pos_ofs_y;
 
         if (!(xstate & (Button1Mask << (button - 1))))
         {
@@ -1522,8 +1524,8 @@ void X11DRV_ButtonPress( HWND hwnd, XEvent *xev )
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, event->x, event->y );
 
-    input.u.mi.dx          = event->x + input_pos_ofs_x;
-    input.u.mi.dy          = event->y + input_pos_ofs_y;
+    input.u.mi.dx          = event->x;
+    input.u.mi.dy          = event->y;
     input.u.mi.mouseData   = button_down_data[buttonNum];
     input.u.mi.dwFlags     = button_down_flags[buttonNum] | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1547,8 +1549,8 @@ void X11DRV_ButtonRelease( HWND hwnd, XEvent *xev )
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, event->x, event->y );
 
-    input.u.mi.dx          = event->x + input_pos_ofs_x;
-    input.u.mi.dy          = event->y + input_pos_ofs_y;
+    input.u.mi.dx          = event->x;
+    input.u.mi.dy          = event->y;
     input.u.mi.mouseData   = button_up_data[buttonNum];
     input.u.mi.dwFlags     = button_up_flags[buttonNum] | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1569,8 +1571,8 @@ void X11DRV_MotionNotify( HWND hwnd, XEvent *xev )
     TRACE( "hwnd %p/%lx pos %d,%d is_hint %d serial %lu\n",
            hwnd, event->window, event->x, event->y, event->is_hint, event->serial );
 
-    input.u.mi.dx          = event->x + input_pos_ofs_x;
-    input.u.mi.dy          = event->y + input_pos_ofs_y;
+    input.u.mi.dx          = event->x;
+    input.u.mi.dy          = event->y;
     input.u.mi.mouseData   = 0;
     input.u.mi.dwFlags     = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1600,8 +1602,8 @@ void X11DRV_EnterNotify( HWND hwnd, XEvent *xev )
     if (event->window == x11drv_thread_data()->grab_window) return;
 
     /* simulate a mouse motion event */
-    input.u.mi.dx          = event->x + input_pos_ofs_x;
-    input.u.mi.dy          = event->y + input_pos_ofs_y;
+    input.u.mi.dx          = event->x;
+    input.u.mi.dy          = event->y;
     input.u.mi.mouseData   = 0;
     input.u.mi.dwFlags     = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
