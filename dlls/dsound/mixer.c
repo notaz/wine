@@ -113,6 +113,7 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 
 	pwfxe = (WAVEFORMATEXTENSIBLE *) dsb->pwfx;
 	dsb->freqAdjust = (float)dsb->freq / dsb->device->pwfx->nSamplesPerSec;
+	dsb->freqAdjust_i = (DWORD)(dsb->freqAdjust * (float)(1 << 24));
 
 	/* HACK: we don't want rasampling.. */
 	if (dsb->freqAdjust != 1.0)
@@ -145,6 +146,7 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	dsb->writelead = (dsb->freq / 100) * dsb->pwfx->nBlockAlign;
 
 	dsb->freqAcc = 0;
+	dsb->freqAcc_i = 0;
 
 	dsb->get_aux = ieee ? getbpp[4] : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
 
@@ -325,11 +327,13 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
     return count;
 }
 
-static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *freqAcc)
+#if 0
+static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count)
 {
     UINT i, channel;
     UINT istride = dsb->pwfx->nBlockAlign;
     UINT ostride = dsb->device->pwfx->nChannels * sizeof(float);
+    float *freqAcc = &dsb->freqAcc;
 
     float freqAdjust = dsb->freqAdjust;
     float freqAcc_start = *freqAcc;
@@ -393,15 +397,39 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *f
 
     return max_ipos;
 }
+#else
+static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count)
+{
+    UINT istride = dsb->pwfx->nBlockAlign, i;
+    UINT ostride = dsb->device->pwfx->nChannels * sizeof(int);
+    DWORD freqAcc_i = dsb->freqAcc_i;
+    DWORD ipos = dsb->sec_mixpos;
+    DWORD opos = 0, icnt = 0;
 
-static void cp_fields(IDirectSoundBufferImpl *dsb, UINT count, float *freqAcc)
+    for (i = 0; i < count; ++i){
+        DWORD channel;
+        for (channel = 0; channel < dsb->mix_channels; channel++)
+            dsb->put(dsb, opos, channel,
+                get_current_sample(dsb, ipos, channel));
+        freqAcc_i += dsb->freqAdjust_i;
+        ipos += (freqAcc_i >> 24) * istride;
+        freqAcc_i &= (1 << 24) - 1;
+        opos += ostride;
+    }
+
+    dsb->freqAcc_i = freqAcc_i;
+    return (ipos - dsb->sec_mixpos) / istride;
+}
+#endif
+
+static void cp_fields(IDirectSoundBufferImpl *dsb, UINT count)
 {
     DWORD ipos, adv;
 
     if (dsb->freqAdjust == 1.0)
         adv = cp_fields_noresample(dsb, count); /* *freqAcc is unmodified */
     else
-        adv = cp_fields_resample(dsb, count, freqAcc);
+        adv = cp_fields_resample(dsb, count);
 
     ipos = dsb->sec_mixpos + adv * dsb->pwfx->nBlockAlign;
     if (ipos >= dsb->buflen) {
@@ -457,7 +485,7 @@ static void DSOUND_MixToTemporary(IDirectSoundBufferImpl *dsb, DWORD frames)
 			dsb->device->tmp_buffer = HeapAlloc(GetProcessHeap(), 0, size_bytes);
 	}
 
-	cp_fields(dsb, frames, &dsb->freqAcc);
+	cp_fields(dsb, frames);
 }
 
 static void DSOUND_MixerVol(const IDirectSoundBufferImpl *dsb, INT frames)

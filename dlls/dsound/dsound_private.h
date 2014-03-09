@@ -156,6 +156,7 @@ struct IDirectSoundBufferImpl
     ULONG                       freqneeded;
     DWORD                       firstep;
     float freqAcc, freqAdjust, firgain;
+    DWORD freqAcc_i, freqAdjust_i;
     /* used for mixing */
     DWORD                       sec_mixpos;
 
