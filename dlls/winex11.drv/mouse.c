@@ -1511,6 +1511,29 @@ void move_resize_window( HWND hwnd, int dir )
 }
 
 
+static void input_rightclick_hack(int *button, int is_down)
+{
+    static int was_down;
+
+    if (*button != 0 && *button != 2)
+        return;
+
+    if (*button == 2) {
+        // hmh
+        was_down = is_down;
+        return;
+    }
+
+    if (was_down && (!is_down || !input_rightclick_hack_on)) {
+        *button = 2;
+        was_down = 0;
+    }
+    else if (!was_down && is_down && input_rightclick_hack_on) {
+        *button = 2;
+        was_down = 1;
+    }
+}
+
 /***********************************************************************
  *           X11DRV_ButtonPress
  */
@@ -1523,6 +1546,8 @@ void X11DRV_ButtonPress( HWND hwnd, XEvent *xev )
     if (buttonNum >= NB_BUTTONS) return;
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, event->x, event->y );
+
+    input_rightclick_hack(&buttonNum, 1);
 
     input.u.mi.dx          = event->x;
     input.u.mi.dy          = event->y;
@@ -1548,6 +1573,8 @@ void X11DRV_ButtonRelease( HWND hwnd, XEvent *xev )
     if (buttonNum >= NB_BUTTONS || !button_up_flags[buttonNum]) return;
 
     TRACE( "hwnd %p/%lx button %u pos %d,%d\n", hwnd, event->window, buttonNum, event->x, event->y );
+
+    input_rightclick_hack(&buttonNum, 0);
 
     input.u.mi.dx          = event->x;
     input.u.mi.dy          = event->y;

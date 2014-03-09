@@ -1382,6 +1382,15 @@ void X11DRV_KeyEvent( HWND hwnd, XEvent *xev )
         return;
     }
 
+    /* rightclick modifier hack */
+    if (keysym == input_rightclick_modifier) {
+        if (event->type == KeyPress)
+            input_rightclick_hack_on = 1;
+        else
+            input_rightclick_hack_on = 0;
+        return;
+    }
+
     EnterCriticalSection( &kbd_section );
 
     /* If XKB extensions are used, the state mask for AltGr will use the group

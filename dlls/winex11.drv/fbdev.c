@@ -38,6 +38,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(fbdev);
 
 int input_pos_ofs_x;
 int input_pos_ofs_y;
+int input_rightclick_modifier;
+int input_rightclick_hack_on;
 
 #define MODE_COUNT 4
 static struct x11drv_mode_info *dd_modes;
@@ -177,6 +179,14 @@ void X11DRV_fbdev_Init(void)
 
   /* add modes for different color depths */
   //X11DRV_Settings_AddDepthModes();
+
+  /* rightclick modifier hack for touchscreen */
+  input_rightclick_modifier = XK_VoidSymbol;
+  {
+    const char *setting = getenv("WINE_RIGHTCLICK_MODIFIER");
+    if (setting != NULL)
+      input_rightclick_modifier = strtol(setting, NULL, 0);
+  }
 
   TRACE("Enabling fbdev modes\n");
 }
