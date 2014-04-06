@@ -65,6 +65,15 @@ static void fbdev_init(void)
 
     // shouldn't change on resolution changes
     fbdev_pitch = fbvar.xres_virtual;
+
+    // fbdev_to_screen assumes in 16bpp..
+    if (fbvar.bits_per_pixel != 16) {
+        FIXME("switching fb to 16bpp..\n");
+        fbvar.bits_per_pixel = 16;
+        ret = ioctl(fd, FBIOPUT_VSCREENINFO, &fbvar);
+        if (ret == -1)
+            perror("FBIOPUT_VSCREENINFO ioctl");
+    }
 }
 
 int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
@@ -123,7 +132,7 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
     }
 
     mypal = surface->fbdev->pal;
-    dst = fbdev_mem + top * pitch + left;
+    dst = fbdev_mem + top * fbdev_pitch + left;
     src += top * pitch + left;
     w = right - left;
 
@@ -138,7 +147,7 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
             dst[i + 3] = mypal[(v >> 24)       ];
         }
         for (; i < w; i++)
-            fbdev_mem[i] = mypal[src[i]];
+            dst[i] = mypal[src[i]];
 
         src += pitch;
         dst += fbdev_pitch;
