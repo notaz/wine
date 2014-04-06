@@ -28,35 +28,43 @@ WINE_DEFAULT_DEBUG_CHANNEL(fbdev);
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <linux/fb.h>
+
+#ifndef FBIO_WAITFORVSYNC
+#define FBIO_WAITFORVSYNC _IOW('F', 0x20, __u32)
+#endif
 
 struct fbdev_state {
     unsigned short pal[256];
 };
 
 static int fbdev_init_failed;
+static int fbdev_fd;
 static unsigned short *fbdev_mem;
 static int fbdev_pitch;
+static int fbdev_vsync;
 
 static void fbdev_init(void)
 {
     struct fb_var_screeninfo fbvar;
-    int fd, ret;
+    const char *var;
+    int ret;
 
-    fd = open("/dev/fb0", O_RDWR);
-    if (fd == -1) {
+    fbdev_fd = open("/dev/fb0", O_RDWR);
+    if (fbdev_fd == -1) {
         perror("open /dev/fb0");
         fbdev_init_failed = 1;
         return;
     }
-    fbdev_mem = mmap(0, 800*480*2, PROT_WRITE|PROT_READ, MAP_SHARED, fd, 0);
+    fbdev_mem = mmap(0, 800*480*2, PROT_WRITE|PROT_READ, MAP_SHARED, fbdev_fd, 0);
     if (fbdev_mem == MAP_FAILED) {
         perror("mmap /dev/fb0");
         fbdev_init_failed = 1;
         return;
     }
 
-    ret = ioctl(fd, FBIOGET_VSCREENINFO, &fbvar);
+    ret = ioctl(fbdev_fd, FBIOGET_VSCREENINFO, &fbvar);
     if (ret == -1) {
         perror("FBIOGET_VSCREENINFO ioctl");
         fbdev_init_failed = 1;
@@ -70,10 +78,39 @@ static void fbdev_init(void)
     if (fbvar.bits_per_pixel != 16) {
         FIXME("switching fb to 16bpp..\n");
         fbvar.bits_per_pixel = 16;
-        ret = ioctl(fd, FBIOPUT_VSCREENINFO, &fbvar);
+        ret = ioctl(fbdev_fd, FBIOPUT_VSCREENINFO, &fbvar);
         if (ret == -1)
             perror("FBIOPUT_VSCREENINFO ioctl");
     }
+
+    var = getenv("WINE_FBDEV_VSYNC");
+    if (var != NULL && !strcmp(var, "1"))
+        fbdev_vsync = 1;
+}
+
+// vsync (only if we are fast enough, assumes 60fps screen)
+static void fbdev_do_vsync(void)
+{
+    static int estimate_x3;
+    struct timeval tv;
+    int now_x3, diff, arg = 0;
+
+    gettimeofday(&tv, NULL);
+    now_x3 = (tv.tv_sec * 1000000 + tv.tv_usec) * 3;
+    estimate_x3 += 50000;
+    diff = now_x3 - estimate_x3;
+
+    if (diff > 50000 * 6 || diff < -50000 * 2) {
+        // out of sync; restart in "lagging"
+        // state to avoid spurious blocking
+        estimate_x3 = now_x3 - 50000;
+        return;
+    }
+    if (diff >= 0)
+        // too slow
+        return;
+
+    ioctl(fbdev_fd, FBIO_WAITFORVSYNC, &arg);
 }
 
 int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
@@ -151,6 +188,13 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
 
         src += pitch;
         dst += fbdev_pitch;
+    }
+
+    h = bottom - top;
+    if (fbdev_vsync && w == surface->resource.width
+        && h == surface->resource.height)
+    {
+        fbdev_do_vsync();
     }
 
     return 1;
