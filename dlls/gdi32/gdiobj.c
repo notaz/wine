@@ -1314,6 +1314,15 @@ DWORD WINAPI GdiGetBatchLimit(void)
  */
 DWORD WINAPI GdiSetBatchLimit( DWORD limit )
 {
+    if (limit == 1)
+    {
+        HMODULE user32 = LoadLibraryA("user32.dll");
+        BOOL (CDECL *__wine_enable_d1_redraw_hack)(void) =
+            (void *)GetProcAddress(user32, "__wine_enable_d1_redraw_hack");
+        if (__wine_enable_d1_redraw_hack)
+            __wine_enable_d1_redraw_hack();
+    }
+
     return 1; /* FIXME */
 }
 

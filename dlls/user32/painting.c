@@ -892,6 +892,12 @@ static HWND fix_caret(HWND hWnd, const RECT *scroll_rect, INT dx, INT dy,
         return 0;
 }
 
+static BOOL d1_redraw_hack_active;
+
+BOOL CDECL __wine_enable_d1_redraw_hack(void)
+{
+	d1_redraw_hack_active = TRUE;
+}
 
 /***********************************************************************
  *		BeginPaint (USER32.@)
@@ -909,6 +915,8 @@ HDC WINAPI BeginPaint( HWND hwnd, PAINTSTRUCT *lps )
     if (!(hrgn = send_ncpaint( hwnd, NULL, &flags ))) return 0;
 
     erase = send_erase( hwnd, flags, hrgn, &rect, &hdc );
+
+    if (d1_redraw_hack_active) erase = TRUE;
 
     TRACE("hdc = %p box = (%s), fErase = %d\n", hdc, wine_dbgstr_rect(&rect), erase);
 
