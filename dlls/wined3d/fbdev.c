@@ -35,57 +35,107 @@ WINE_DEFAULT_DEBUG_CHANNEL(fbdev);
 #define FBIO_WAITFORVSYNC _IOW('F', 0x20, __u32)
 #endif
 
+// placed into wined3d_surface
 struct fbdev_state {
     unsigned short pal[256];
 };
 
-static int fbdev_init_failed;
-static int fbdev_fd;
-static unsigned short *fbdev_mem;
-static int fbdev_pitch;
-static int fbdev_vsync;
+static struct {
+    int init_failed;
+    int fd;
+    struct fb_var_screeninfo fbvar;
+    unsigned short *mem;
+    int buffers;
+    int buf_n;
+    int pitch;
+    int height;
+    int vsync;
+} fbdev;
 
 static void fbdev_init(void)
 {
-    struct fb_var_screeninfo fbvar;
+    const char *devname = "/dev/fb0";
     const char *var;
+    int fbvar_update = 0;
+    int buffers = 1;
     int ret;
 
-    fbdev_fd = open("/dev/fb0", O_RDWR);
-    if (fbdev_fd == -1) {
-        perror("open /dev/fb0");
-        fbdev_init_failed = 1;
-        return;
-    }
-    fbdev_mem = mmap(0, 800*480*2, PROT_WRITE|PROT_READ, MAP_SHARED, fbdev_fd, 0);
-    if (fbdev_mem == MAP_FAILED) {
-        perror("mmap /dev/fb0");
-        fbdev_init_failed = 1;
+    var = getenv("WINE_FBDEV_DEV");
+    if (var != NULL)
+        devname = var;
+
+    var = getenv("WINE_FBDEV_DOUBLEBUF");
+    if (var != NULL && atoi(var) != 0)
+        buffers = 3;
+
+    fbdev.fd = open(devname, O_RDWR);
+    if (fbdev.fd == -1) {
+        fprintf(stderr, "open '%s'", devname);
+        perror("");
+        fbdev.init_failed = 1;
         return;
     }
 
-    ret = ioctl(fbdev_fd, FBIOGET_VSCREENINFO, &fbvar);
+    for (; buffers > 0; buffers--) {
+        fbdev.mem = mmap(0, 800*480*2 * buffers, PROT_WRITE|PROT_READ,
+                         MAP_SHARED, fbdev.fd, 0);
+        if (fbdev.mem == MAP_FAILED) {
+            fprintf(stderr, "mmap '%s' %d buffer(s)", devname, buffers);
+            perror("");
+            continue;
+        }
+        break;
+    }
+    if (buffers == 0) {
+        fbdev.init_failed = 1;
+        return;
+    }
+
+    ret = ioctl(fbdev.fd, FBIOGET_VSCREENINFO, &fbdev.fbvar);
     if (ret == -1) {
         perror("FBIOGET_VSCREENINFO ioctl");
-        fbdev_init_failed = 1;
+        fbdev.init_failed = 1;
         return;
     }
 
     // shouldn't change on resolution changes
-    fbdev_pitch = fbvar.xres_virtual;
+    fbdev.pitch = fbdev.fbvar.xres_virtual;
 
-    // fbdev_to_screen assumes in 16bpp..
-    if (fbvar.bits_per_pixel != 16) {
+    fbdev.height = fbdev.fbvar.yres;
+
+    // fbdev_to_screen assumes 16bpp...
+    if (fbdev.fbvar.bits_per_pixel != 16) {
         FIXME("switching fb to 16bpp..\n");
-        fbvar.bits_per_pixel = 16;
-        ret = ioctl(fbdev_fd, FBIOPUT_VSCREENINFO, &fbvar);
+        fbdev.fbvar.bits_per_pixel = 16;
+        fbvar_update = 1;
+    }
+
+    if (fbdev.fbvar.yres_virtual < fbdev.height * buffers) {
+        fbdev.fbvar.yres_virtual = fbdev.height * buffers;
+        fbvar_update = 1;
+    }
+
+    if (fbvar_update) {
+        ret = ioctl(fbdev.fd, FBIOPUT_VSCREENINFO, &fbdev.fbvar);
         if (ret == -1)
             perror("FBIOPUT_VSCREENINFO ioctl");
     }
 
     var = getenv("WINE_FBDEV_VSYNC");
-    if (var != NULL && !strcmp(var, "1"))
-        fbdev_vsync = 1;
+    if (var != NULL && atoi(var) != 0)
+        fbdev.vsync = 1;
+
+    fbdev.buffers = buffers;
+}
+
+static void fbdev_do_flip(void)
+{
+    fbdev.fbvar.yoffset = fbdev.buf_n * fbdev.height;
+    ioctl(fbdev.fd, FBIOPAN_DISPLAY, &fbdev.fbvar);
+
+    fbdev.buf_n++;
+    if (fbdev.buf_n >= fbdev.buffers)
+        fbdev.buf_n = 0;
 }
 
 // vsync (only if we are fast enough, assumes 60fps screen)
@@ -110,7 +160,7 @@ static void fbdev_do_vsync(void)
         // too slow
         return;
 
-    ioctl(fbdev_fd, FBIO_WAITFORVSYNC, &arg);
+    ioctl(fbdev.fd, FBIO_WAITFORVSYNC, &arg);
 }
 
 int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
@@ -122,13 +172,13 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
     unsigned int v;
     int i, w, h;
 
-    if (fbdev_mem == NULL) {
-        if (fbdev_init_failed)
+    if (fbdev.mem == NULL) {
+        if (fbdev.init_failed)
             return 0;
 
         fbdev_init();
 
-        if (fbdev_init_failed)
+        if (fbdev.init_failed)
             return 0;
     }
 
@@ -169,7 +219,8 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
     }
 
     mypal = surface->fbdev->pal;
-    dst = fbdev_mem + top * fbdev_pitch + left;
+    dst = fbdev.mem + fbdev.buf_n * fbdev.pitch * fbdev.height
+           + top * fbdev.pitch + left;
     src += top * pitch + left;
     w = right - left;
 
@@ -187,14 +238,17 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
             dst[i] = mypal[src[i]];
 
         src += pitch;
-        dst += fbdev_pitch;
+        dst += fbdev.pitch;
     }
 
     h = bottom - top;
-    if (fbdev_vsync && w == surface->resource.width
+    if (w == surface->resource.width
         && h == surface->resource.height)
     {
-        fbdev_do_vsync();
+        if (fbdev.buffers > 1)
+            fbdev_do_flip();
+        if (fbdev.vsync)
+            fbdev_do_vsync();
     }
 
     return 1;

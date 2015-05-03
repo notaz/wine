@@ -26,6 +26,7 @@
 #include <sys/ioctl.h>
 #include <linux/fb.h>
 #include <linux/omapfb.h>
+#include <errno.h>
 
 #include "x11drv.h"
 
@@ -95,8 +96,8 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
         screen_bpp, dd_modes[mode].bpp);
   }
 
-  TRACE("Resizing X display to %dx%d\n", 
-        dd_modes[mode].width, dd_modes[mode].height);
+  MESSAGE("Resizing X display to %dx%d\n", 
+          dd_modes[mode].width, dd_modes[mode].height);
 
   ret = ioctl(fd, FBIOGET_VSCREENINFO, &fbvar);
   if (ret == -1) {
@@ -128,6 +129,7 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
   fbvar.yres = dd_modes[mode].height;
   fbvar.bits_per_pixel = screen_bpp;
   //fbvar.bits_per_pixel = dd_modes[mode].bpp;
+  fbvar.xoffset = fbvar.yoffset = 0;
 
   ret = ioctl(fd, FBIOPUT_VSCREENINFO, &fbvar);
   if (ret == -1) {
@@ -157,11 +159,18 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
 
 void X11DRV_fbdev_Init(void)
 {
+  const char *devname = "/dev/fb0";
+  const char *var;
+
   if (fd > 0) return; /* already initialized? */
 
-  fd = open("/dev/fb0", O_RDWR);
+  var = getenv("WINE_FBDEV_DEV");
+  if (var != NULL)
+    devname = var;
+
+  fd = open(devname, O_RDWR);
   if (fd == -1) {
-    ERR("open /dev/fb0\n");
+    ERR("open %s: %s\n", devname, strerror(errno));
     return;
   }
 
