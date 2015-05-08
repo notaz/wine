@@ -138,15 +138,21 @@ static void fbdev_do_flip(void)
         fbdev.buf_n = 0;
 }
 
+static int get_usec_x3(void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000000 + tv.tv_usec) * 3;
+}
+
 // vsync (only if we are fast enough, assumes 60fps screen)
 static void fbdev_do_vsync(void)
 {
     static int estimate_x3;
-    struct timeval tv;
     int now_x3, diff, arg = 0;
 
-    gettimeofday(&tv, NULL);
-    now_x3 = (tv.tv_sec * 1000000 + tv.tv_usec) * 3;
+    now_x3 = get_usec_x3();
     estimate_x3 += 50000;
     diff = now_x3 - estimate_x3;
 
@@ -160,7 +166,13 @@ static void fbdev_do_vsync(void)
         // too slow
         return;
 
+    // the system timer and LCD use different oscillators, so there is
+    // a slow device-specific drift, can't rely on the timer alone
     ioctl(fbdev.fd, FBIO_WAITFORVSYNC, &arg);
+
+    // make the target time a bit before the estimated vsync
+    // so that flip time isn't too close to time of hw register fetch
+    estimate_x3 = get_usec_x3() - 1000 * 3;
 }
 
 int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
