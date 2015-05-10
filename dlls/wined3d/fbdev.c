@@ -240,6 +240,7 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
 
     for (h = bottom - top; h > 0; h--) {
         for (i = 0; i + 3 < w; i += 4) {
+            __builtin_prefetch(src + i + 64);
             v = *(unsigned int *)&src[i];
             dst[i + 0] = mypal[(v >>  0) & 0xff];
             dst[i + 1] = mypal[(v >>  8) & 0xff];
