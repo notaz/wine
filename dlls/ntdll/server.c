@@ -77,6 +77,7 @@
 #include "wine/server.h"
 #include "wine/debug.h"
 #include "ntdll_misc.h"
+#include "sync_fast.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(server);
 
@@ -1015,6 +1016,14 @@ void CDECL wine_server_release_fd( HANDLE handle, int unix_fd )
     close( unix_fd );
 }
 
+
+/***********************************************************************
+ *           wine_fast_handle_to_server_handle   (NTDLL.@)
+ */
+HANDLE wine_fast_handle_to_server_handle( HANDLE handle )
+{
+    return fast_event_use_wineserver( handle );
+}
 
 /***********************************************************************
  *           server_pipe

@@ -37,6 +37,7 @@
 #include "windef.h"
 #include "winternl.h"
 #include "ntdll_misc.h"
+#include "sync_fast.h"
 #include "wine/server.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
@@ -347,8 +348,12 @@ NTSTATUS WINAPI NtDuplicateObject( HANDLE source_process, HANDLE source,
 NTSTATUS close_handle( HANDLE handle )
 {
     NTSTATUS ret;
-    int fd = server_remove_fd_from_cache( handle );
+    int fd;
 
+    if (is_fast_event_handle( handle ))
+        return fast_event_close( handle );
+
+    fd = server_remove_fd_from_cache( handle );
     SERVER_START_REQ( close_handle )
     {
         req->handle = wine_server_obj_handle( handle );

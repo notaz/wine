@@ -44,6 +44,7 @@ C_SRCS = \
 	signal_x86_64.c \
 	string.c \
 	sync.c \
+	sync_fast.c \
 	tape.c \
 	thread.c \
 	threadpool.c \

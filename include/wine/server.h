@@ -54,6 +54,7 @@ extern void CDECL wine_server_send_fd( int fd );
 extern int CDECL wine_server_fd_to_handle( int fd, unsigned int access, unsigned int attributes, HANDLE *handle );
 extern int CDECL wine_server_handle_to_fd( HANDLE handle, unsigned int access, int *unix_fd, unsigned int *options );
 extern void CDECL wine_server_release_fd( HANDLE handle, int unix_fd );
+extern HANDLE wine_fast_handle_to_server_handle( HANDLE handle );
 
 /* do a server call and set the last error code */
 static inline unsigned int wine_server_call_err( void *req_ptr )
@@ -93,6 +94,8 @@ static inline void wine_server_set_reply( void *req_ptr, void *ptr, data_size_t 
 static inline obj_handle_t wine_server_obj_handle( HANDLE handle )
 {
     if ((int)(INT_PTR)handle != (INT_PTR)handle) return 0xfffffff0;  /* some invalid handle */
+    if (((INT_PTR)handle & 0xff000000) == 0x01000000)
+        handle = wine_fast_handle_to_server_handle(handle);
     return (INT_PTR)handle;
 }
 

@@ -84,6 +84,7 @@
 #include "wine/debug.h"
 #include "wine/server.h"
 #include "ntdll_misc.h"
+#include "sync_fast.h"
 
 #include "winternl.h"
 #include "winioctl.h"
@@ -600,6 +601,9 @@ NTSTATUS WINAPI NtReadFile(HANDLE hFile, HANDLE hEvent,
 
     if (!io_status) return STATUS_ACCESS_VIOLATION;
 
+    if (is_fast_event_handle(hEvent))
+        hEvent = fast_event_use_wineserver(hEvent);
+
     status = server_get_unix_fd( hFile, FILE_READ_DATA, &unix_handle,
                                  &needs_close, &type, &options );
     if (status) return status;
@@ -979,6 +983,9 @@ NTSTATUS WINAPI NtWriteFile(HANDLE hFile, HANDLE hEvent,
           hFile,hEvent,apc,apc_user,io_status,buffer,length,offset,key);
 
     if (!io_status) return STATUS_ACCESS_VIOLATION;
+
+    if (is_fast_event_handle(hEvent))
+        hEvent = fast_event_use_wineserver(hEvent);
 
     status = server_get_unix_fd( hFile, FILE_WRITE_DATA, &unix_handle,
                                  &needs_close, &type, &options );
@@ -1441,6 +1448,9 @@ NTSTATUS WINAPI NtDeviceIoControlFile(HANDLE handle, HANDLE event,
           handle, event, apc, apc_context, io, code,
           in_buffer, in_size, out_buffer, out_size);
 
+    if (is_fast_event_handle(event))
+        event = fast_event_use_wineserver(event);
+
     switch(device)
     {
     case FILE_DEVICE_DISK:
@@ -1503,6 +1513,9 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
           in_buffer, in_size, out_buffer, out_size);
 
     if (!io) return STATUS_INVALID_PARAMETER;
+
+    if (is_fast_event_handle(event))
+        event = fast_event_use_wineserver(event);
 
     ignore_server_ioctl_struct_holes( code, in_buffer, in_size );
 

@@ -58,6 +58,7 @@
 #include "wine/server.h"
 #include "wine/debug.h"
 #include "ntdll_misc.h"
+#include "sync_fast.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 
@@ -311,6 +312,14 @@ NTSTATUS WINAPI NtCreateEvent( PHANDLE EventHandle, ACCESS_MASK DesiredAccess,
     }
     SERVER_END_REQ;
 
+    if (ret == STATUS_SUCCESS && sd == NULL && len == 0
+        && type == SynchronizationEvent && DesiredAccess == EVENT_ALL_ACCESS)
+    {
+        HANDLE hfast = fast_event_create(*EventHandle, InitialState);
+        if (hfast != NULL)
+            *EventHandle = hfast;
+    }
+
     NTDLL_free_struct_sd( sd );
 
     return ret;
@@ -354,6 +363,12 @@ NTSTATUS WINAPI NtSetEvent( HANDLE handle, PULONG NumberOfThreadsReleased )
 
     /* FIXME: set NumberOfThreadsReleased */
 
+    if (is_fast_event_handle(handle))
+    {
+        if (fast_event_set(&handle))
+            return STATUS_SUCCESS;
+    }
+
     SERVER_START_REQ( event_op )
     {
         req->handle = wine_server_obj_handle( handle );
@@ -373,6 +388,12 @@ NTSTATUS WINAPI NtResetEvent( HANDLE handle, PULONG NumberOfThreadsReleased )
 
     /* resetting an event can't release any thread... */
     if (NumberOfThreadsReleased) *NumberOfThreadsReleased = 0;
+
+    if (is_fast_event_handle(handle))
+    {
+        if (fast_event_reset(&handle))
+            return STATUS_SUCCESS;
+    }
 
     SERVER_START_REQ( event_op )
     {
@@ -407,6 +428,12 @@ NTSTATUS WINAPI NtPulseEvent( HANDLE handle, PULONG PulseCount )
 
     if (PulseCount)
       FIXME("(%p,%d)\n", handle, *PulseCount);
+
+    if (is_fast_event_handle(handle))
+    {
+        if (fast_event_pulse(&handle))
+            return STATUS_SUCCESS;
+    }
 
     SERVER_START_REQ( event_op )
     {
@@ -854,12 +881,28 @@ NTSTATUS WINAPI NtWaitForMultipleObjects( DWORD count, const HANDLE *handles,
 {
     select_op_t select_op;
     UINT i, flags = SELECT_INTERRUPTIBLE;
+    HANDLE server_handle;
+    NTSTATUS status;
 
     if (!count || count > MAXIMUM_WAIT_OBJECTS) return STATUS_INVALID_PARAMETER_1;
 
+    if (count == 1 && !alertable && is_fast_event_handle(handles[0]))
+    {
+        status = fast_event_wait(handles[0], timeout);
+        if (!HIWORD(status))  /* is it an error code? */
+            return status;
+    }
+
     if (alertable) flags |= SELECT_ALERTABLE;
     select_op.wait.op = wait_any ? SELECT_WAIT : SELECT_WAIT_ALL;
-    for (i = 0; i < count; i++) select_op.wait.handles[i] = wine_server_obj_handle( handles[i] );
+    for (i = 0; i < count; i++)
+    {
+        server_handle = handles[i];
+        if (is_fast_event_handle(handles[i]))
+            server_handle = fast_event_use_wineserver(handles[i]);
+
+        select_op.wait.handles[i] = wine_server_obj_handle( server_handle );
+    }
     return server_select( &select_op, offsetof( select_op_t, wait.handles[count] ), flags, timeout );
 }
 
