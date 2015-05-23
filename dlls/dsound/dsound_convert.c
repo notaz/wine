@@ -36,6 +36,8 @@
 
 #include "config.h"
 
+#undef _ISOC99_SOURCE
+#define _ISOC99_SOURCE
 #include <stdarg.h>
 #include <math.h>
 
@@ -174,12 +176,44 @@ void put_mono2stereo(const IDirectSoundBufferImpl *dsb, DWORD pos, DWORD channel
     putint(dsb, pos, 1, value);
 }
 
+#ifdef __ARM_NEON__
+void mixint32(int *src, int *dst, unsigned samples);
+asm(
+".align 3\n"
+".globl mixint32\n"
+"mixint32:\n"
+"0:\n"
+"  subs      r2, #8\n"
+"  blt       1f\n"
+"  vld1.32   {q0,q1}, [r0, :256]!\n"
+"  vld1.32   {q2,q3}, [r1, :256]\n"
+"  pld       [r0, #64*2]\n"
+"  pld       [r1, #64*2]\n"
+"  vadd.s32  q0, q2\n"
+"  vadd.s32  q1, q3\n"
+"  vst1.32   {q0,q1}, [r1, :256]!\n"
+"  b         0b\n"
+"1:\n"
+"  adds      r2, #8\n"
+"  bxeq      lr\n"
+"2:\n"
+"  ldr       r3, [r0], #4\n"
+"  ldr       r12,[r1]\n"
+"  subs      r2, #1\n"
+"  add       r3, r12\n"
+"  str       r3, [r1], #4\n"
+"  bgt       2b\n"
+"  nop\n"
+"  bx        lr\n"
+);
+#else
 void mixint32(int *src, int *dst, unsigned samples)
 {
     TRACE("%p - %p %d\n", src, dst, samples);
     while (samples--)
         *(dst++) += *(src++);
 }
+#endif
 
 static void norm8(int *src, unsigned char *dst, unsigned len)
 {
@@ -187,6 +221,7 @@ static void norm8(int *src, unsigned char *dst, unsigned len)
     while (len--)
     {
         int l = *src;
+        *src = 0;
         ssat32_to_16(l);
         *dst = (l >> 8) + 0x80;
         ++dst;
@@ -194,6 +229,39 @@ static void norm8(int *src, unsigned char *dst, unsigned len)
     }
 }
 
+#ifdef __ARM_NEON__
+void norm16(int *src, SHORT *dst, unsigned len);
+asm(
+".align 3\n"
+"norm16:\n"
+"  lsr       r2, #1\n"
+"  mov       r12, #0\n"
+"  vdup.32   q2, r12\n"
+"  vdup.32   q3, r12\n"
+"0:\n"
+"  pld       [r0, #64*2]\n"
+"  subs      r2, #8\n"
+"  blt       1f\n"
+"  vld1.32   {q0,q1}, [r0]\n"
+"  vst1.32   {q2,q3}, [r0]!\n"
+"  vqmovn.s32 d0, q0\n"
+"  vqmovn.s32 d1, q1\n"
+"  vst1.16   {q0}, [r1]!\n"
+"  b         0b\n"
+"1:\n"
+"  adds      r2, #8\n"
+"  bxeq      lr\n"
+"2:\n"
+"  ldr       r3, [r0]\n"
+"  subs      r2, #1\n"
+"  str       r12,[r0], #4\n"
+"  ssat      r3, #16, r3\n"
+"  strh      r3, [r1], #2\n"
+"  bgt       2b\n"
+"  nop\n"
+"  bx        lr\n"
+);
+#else
 static void norm16(int *src, SHORT *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
@@ -201,12 +269,14 @@ static void norm16(int *src, SHORT *dst, unsigned len)
     while (len--)
     {
         int l = *src;
+        *src = 0;
         ssat32_to_16(l);
         *dst = le16(l);
         ++dst;
         ++src;
     }
 }
+#endif
 
 static void norm24(int *src, BYTE *dst, unsigned len)
 {
@@ -216,6 +286,7 @@ static void norm24(int *src, BYTE *dst, unsigned len)
     {
         LONG t;
         int l = *src;
+        *src = 0;
         ssat32_to_16(l);
         t = l << 8;;
         dst[0] = (t >> 8) & 0xFF;
@@ -226,6 +297,39 @@ static void norm24(int *src, BYTE *dst, unsigned len)
     }
 }
 
+#ifdef __ARM_NEON__
+void norm32(int *src, INT *dst, unsigned len);
+asm(
+".align 3\n"
+"norm32:\n"
+"  lsr       r2, #2\n"
+"  mov       r12, #0\n"
+"  vdup.32   q2, r12\n"
+"  vdup.32   q3, r12\n"
+"0:\n"
+"  pld       [r0, #64*2]\n"
+"  subs      r2, #8\n"
+"  blt       1f\n"
+"  vld1.32   {q0,q1}, [r0]\n"
+"  vst1.32   {q2,q3}, [r0]!\n"
+"  vqshl.s32 q0, q0, #16\n"
+"  vqshl.s32 q1, q1, #16\n"
+"  vst1.32   {q0,q1}, [r1]!\n"
+"  b         0b\n"
+"1:\n"
+"  adds      r2, #8\n"
+"  bxeq      lr\n"
+"2:\n"
+"  ldr       r3, [r0]\n"
+"  subs      r2, #1\n"
+"  str       r12,[r0], #4\n"
+"  ssat      r3, #32, r3, lsl #16\n"
+"  str       r3, [r1], #4\n"
+"  bgt       2b\n"
+"  nop\n"
+"  bx        lr\n"
+);
+#else
 static void norm32(int *src, INT *dst, unsigned len)
 {
     TRACE("%p - %p %d\n", src, dst, len);
@@ -233,12 +337,14 @@ static void norm32(int *src, INT *dst, unsigned len)
     while (len--)
     {
         int l = *src;
+        *src = 0;
         ssat32_to_16(l);
         *dst = le32(l << 16);
         ++dst;
         ++src;
     }
 }
+#endif
 
 static void normieee32(int *src, float *dst, unsigned len)
 {
@@ -247,6 +353,7 @@ static void normieee32(int *src, float *dst, unsigned len)
     while (len--)
     {
         int l = *src;
+        *src = 0;
         ssat32_to_16(l);
         *dst = (float)l / 32768.0f;
         ++dst;

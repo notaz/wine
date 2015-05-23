@@ -241,6 +241,32 @@ static inline int get_current_sample(const IDirectSoundBufferImpl *dsb,
     return dsb->get(dsb, mixpos % dsb->buflen, channel);
 }
 
+#ifdef __ARM_NEON__
+void put32from16(int *dst, const short *src, unsigned int count);
+asm(
+".align 3\n"
+"put32from16:\n"
+"0:\n"
+"  pld       [r1, #64*2]\n"
+"  subs      r2, #8\n"
+"  blt       1f\n"
+"  vld1.16   {q2}, [r1]!\n"
+"  vmovl.s16 q0, d4\n"
+"  vmovl.s16 q1, d5\n"
+"  vst1.32   {q0,q1}, [r0]!\n"
+"  b         0b\n"
+"1:\n"
+"  adds      r2, #8\n"
+"  bxeq      lr\n"
+"2:\n"
+"  ldrsh     r3, [r1], #2\n"
+"  subs      r2, #1\n"
+"  str       r3, [r0], #4\n"
+"  bgt       2b\n"
+"  nop\n"
+"  bx        lr\n"
+);
+#else
 static inline void put32from16(int *dst, short *src, unsigned int count)
 {
     for (; count >= 4; count -= 4) {
@@ -252,6 +278,7 @@ static inline void put32from16(int *dst, short *src, unsigned int count)
     for (; count > 0; count--)
         *dst++ = *src++;
 }
+#endif
 
 static inline void put32from16mono(int *dst, short *src, unsigned int count)
 {
@@ -289,6 +316,7 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
         short *src = (short *)((BYTE *)dsb->buffer->memory + mixpos);
         int *dst = dsb->device->tmp_buffer;
 
+        __builtin_prefetch(src);
         if (dsb->device->pwfx->nChannels == dsb->mix_channels) {
             DWORD words = count * dsb->mix_channels;
             while (words > 0) {
@@ -476,13 +504,18 @@ static void DSOUND_MixToTemporary(IDirectSoundBufferImpl *dsb, DWORD frames)
 {
 	UINT size_bytes = frames * sizeof(int) * dsb->device->pwfx->nChannels;
 
-	if (dsb->device->tmp_buffer_len < size_bytes || !dsb->device->tmp_buffer)
+	if (dsb->device->tmp_buffer_len < size_bytes || !dsb->device->tmp_buffer_alloc)
 	{
 		dsb->device->tmp_buffer_len = size_bytes;
-		if (dsb->device->tmp_buffer)
-			dsb->device->tmp_buffer = HeapReAlloc(GetProcessHeap(), 0, dsb->device->tmp_buffer, size_bytes);
+		dsb->device->tmp_buffer = NULL;
+		if (dsb->device->tmp_buffer_alloc)
+			dsb->device->tmp_buffer_alloc = HeapReAlloc(GetProcessHeap(), 0, dsb->device->tmp_buffer_alloc, size_bytes + 32);
 		else
-			dsb->device->tmp_buffer = HeapAlloc(GetProcessHeap(), 0, size_bytes);
+			dsb->device->tmp_buffer_alloc = HeapAlloc(GetProcessHeap(), 0, size_bytes + 32);
+		if (dsb->device->tmp_buffer_alloc == NULL)
+			return;
+		/* align for NEON */
+		dsb->device->tmp_buffer = (void *)(((long)dsb->device->tmp_buffer_alloc + 31) & ~31);
 	}
 
 	cp_fields(dsb, frames);
@@ -867,7 +900,8 @@ static void DSOUND_PerformMix(DirectSoundDevice *device)
 		TRACE("prebuff_left = %d, prebuff_max = %dx%d=%d, writelead=%d\n",
 			prebuff_left, device->prebuf, device->fraglen, prebuff_max, writelead);
 
-		ZeroMemory(device->mix_buffer, device->mix_buffer_len);
+		// mix_buffer is now cleared by normfunction
+		//ZeroMemory(device->mix_buffer, maxq);
 
 		/* do the mixing */
 		DSOUND_MixToPrimary(device, writepos, maxq, recover, &all_stopped);

@@ -80,7 +80,9 @@ struct DirectSoundDevice
     CRITICAL_SECTION            mixlock;
     IDirectSoundBufferImpl     *primary;
     DWORD                       speaker_config;
+    int *mix_buffer_alloc;
     int *mix_buffer;
+    int *tmp_buffer_alloc;
     int *tmp_buffer;
     DWORD                       tmp_buffer_len, mix_buffer_len;
 

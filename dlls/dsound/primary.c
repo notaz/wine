@@ -278,11 +278,14 @@ HRESULT DSOUND_PrimaryOpen(DirectSoundDevice *device)
 		device->buflen -= device->buflen % device->pwfx->nBlockAlign;
 	}
 
-	HeapFree(GetProcessHeap(), 0, device->mix_buffer);
+	HeapFree(GetProcessHeap(), 0, device->mix_buffer_alloc);
+	device->mix_buffer = NULL;
 	device->mix_buffer_len = (device->buflen / (device->pwfx->wBitsPerSample / 8)) * sizeof(int);
-	device->mix_buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, device->mix_buffer_len);
-	if (!device->mix_buffer)
+	device->mix_buffer_alloc = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, device->mix_buffer_len + 32);
+	if (!device->mix_buffer_alloc)
 		return DSERR_OUTOFMEMORY;
+	/* align for NEON */
+	device->mix_buffer = (void *)(((long)device->mix_buffer_alloc + 31) & ~31);
 
 	if (device->state == STATE_PLAYING) device->state = STATE_STARTING;
 	else if (device->state == STATE_STOPPING) device->state = STATE_STOPPED;
