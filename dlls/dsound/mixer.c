@@ -432,7 +432,7 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count)
     UINT ostride = dsb->device->pwfx->nChannels * sizeof(int);
     DWORD freqAcc_i = dsb->freqAcc_i;
     DWORD ipos = dsb->sec_mixpos;
-    DWORD opos = 0, icnt = 0;
+    DWORD opos = 0;
 
     for (i = 0; i < count; ++i){
         DWORD channel;
@@ -838,12 +838,15 @@ static void DSOUND_PerformMix(DirectSoundDevice *device)
 
 	if (device->priolevel != DSSCL_WRITEPRIMARY) {
 		BOOL recover = FALSE, all_stopped = FALSE;
-		DWORD playpos, writepos, writelead, maxq, prebuff_max, prebuff_left, size1, size2;
+		DWORD playpos, writepos, writelead, maxq, prebuff_max, prebuff_left;
+#ifdef DO_CLEAR
+		DWORD size1, size2;
 		LPVOID buf1, buf2;
 		int nfiller;
 
 		/* the sound of silence */
 		nfiller = device->pwfx->wBitsPerSample == 8 ? 128 : 0;
+#endif
 
 		/* get the position in the primary buffer */
 		if (DSOUND_PrimaryGetPosition(device, &playpos, &writepos) != 0){
@@ -876,6 +879,7 @@ static void DSOUND_PerformMix(DirectSoundDevice *device)
 			device->mixpos = writepos;
 
 			ZeroMemory(device->buffer, device->buflen);
+#ifdef DO_CLEAR
 		} else if (playpos < device->playpos) {
 			buf1 = device->buffer + device->playpos;
 			buf2 = device->buffer;
@@ -891,6 +895,7 @@ static void DSOUND_PerformMix(DirectSoundDevice *device)
 			size1 = playpos - device->playpos;
 			size2 = 0;
 			FillMemory(buf1, size1, nfiller);
+#endif
 		}
 		device->playpos = playpos;
 
