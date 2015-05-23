@@ -2543,7 +2543,7 @@ static HRESULT WINAPI AudioRenderClient_GetBuffer(IAudioRenderClient *iface,
         This->getbuf_last = frames;
     }
 
-    silence_buffer(This, *data, frames);
+    //silence_buffer(This, *data, frames);
 
     LeaveCriticalSection(&This->lock);
 
