@@ -86,8 +86,8 @@ static HRESULT DSOUND_WaveFormat(DirectSoundDevice *device, IAudioClient *client
         if (!IsEqualGUID(&mixwfe->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
             WAVEFORMATEXTENSIBLE testwfe = *mixwfe;
 
-            testwfe.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-            testwfe.Samples.wValidBitsPerSample = testwfe.Format.wBitsPerSample = 32;
+            testwfe.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+            testwfe.Samples.wValidBitsPerSample = testwfe.Format.wBitsPerSample = 16;
             testwfe.Format.nBlockAlign = testwfe.Format.nChannels * testwfe.Format.wBitsPerSample / 8;
             testwfe.Format.nAvgBytesPerSec = testwfe.Format.nSamplesPerSec * testwfe.Format.nBlockAlign;
 
