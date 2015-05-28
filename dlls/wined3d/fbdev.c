@@ -60,9 +60,10 @@ static void fbdev_init(void)
     int buffers = 1;
     int ret;
 
-    var = getenv("WINE_FBDEV_DEV");
-    if (var != NULL)
+    if ((var = getenv("WINE_FBDEV_DEV")))
         devname = var;
+    else if ((var = getenv("WINE_FBDEV_USE_SCALER")) && atoi(var) != 0)
+        devname = "/dev/fb1";
 
     var = getenv("WINE_FBDEV_DOUBLEBUF");
     if (var != NULL && atoi(var) != 0)
@@ -101,9 +102,11 @@ static void fbdev_init(void)
     // shouldn't change on resolution changes
     fbdev.pitch = fbdev.fbvar.xres_virtual;
 
-    fbdev.height = fbdev.fbvar.yres;
+    // hardcoded for now to simplify things
+    fbdev.height = 480;
 
     // fbdev_to_screen assumes 16bpp...
+    // note: normally should be already set up by winex11.drv/fbdev.c
     if (fbdev.fbvar.bits_per_pixel != 16) {
         FIXME("switching fb to 16bpp..\n");
         fbdev.fbvar.bits_per_pixel = 16;
