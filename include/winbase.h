@@ -2470,7 +2470,7 @@ WINBASEAPI INT         WINAPI lstrlenW(LPCWSTR);
 
 /* string functions without the exception handler */
 
-static inline LPWSTR WINAPI lstrcpynW( LPWSTR dst, LPCWSTR src, INT n )
+static __attribute__((unused,noinline,noclone)) LPWSTR WINAPI lstrcpynW( LPWSTR dst, LPCWSTR src, INT n )
 {
     LPWSTR d = dst;
     LPCWSTR s = src;
