@@ -1349,7 +1349,8 @@ BOOL CDECL X11DRV_SetCursorPos( INT x, INT y )
     struct x11drv_thread_data *data = x11drv_init_thread_data();
     POINT pos = virtual_screen_to_root( x, y );
 
-    XWarpPointer( data->display, root_window, root_window, 0, 0, 0, 0, pos.x, pos.y );
+    XWarpPointer( data->display, root_window, root_window, 0, 0, 0, 0,
+                  pos.x - input_pos_ofs_x, pos.y - input_pos_ofs_y );
     data->warp_serial = NextRequest( data->display );
     XNoOp( data->display );
     XFlush( data->display ); /* avoids bad mouse lag in games that do their own mouse warping */
