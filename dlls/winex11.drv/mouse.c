@@ -607,8 +607,8 @@ static void send_mouse_input( HWND hwnd, Window window, unsigned int state, INPU
         SERVER_END_REQ;
     }
 
-    input->u.mi.dx = pt.x + input_pos_ofs_x;
-    input->u.mi.dy = pt.y + input_pos_ofs_y;
+    input->u.mi.dx = (pt.x * input_pos_mul_x >> 16) + input_pos_ofs_x;
+    input->u.mi.dy = (pt.y * input_pos_mul_y >> 16) + input_pos_ofs_y;
     __wine_send_input( hwnd, input );
 }
 
@@ -1350,7 +1350,8 @@ BOOL CDECL X11DRV_SetCursorPos( INT x, INT y )
     POINT pos = virtual_screen_to_root( x, y );
 
     XWarpPointer( data->display, root_window, root_window, 0, 0, 0, 0,
-                  pos.x - input_pos_ofs_x, pos.y - input_pos_ofs_y );
+                  (pos.x << 16) / input_pos_mul_x - input_pos_ofs_x,
+                  (pos.y << 16) / input_pos_mul_y - input_pos_ofs_y );
     data->warp_serial = NextRequest( data->display );
     XNoOp( data->display );
     XFlush( data->display ); /* avoids bad mouse lag in games that do their own mouse warping */
@@ -1373,7 +1374,9 @@ BOOL CDECL X11DRV_GetCursorPos(LPPOINT pos)
     if (ret)
     {
         POINT old = *pos;
-        *pos = root_to_virtual_screen( winX + input_pos_ofs_x, winY + input_pos_ofs_y );
+        *pos = root_to_virtual_screen(
+                 (winX * input_pos_mul_x >> 16) + input_pos_ofs_x,
+                 (winY * input_pos_mul_y >> 16) + input_pos_ofs_y );
         TRACE( "pointer at (%d,%d) server pos %d,%d\n", pos->x, pos->y, old.x, old.y );
     }
     return ret;
@@ -1477,8 +1480,8 @@ void move_resize_window( HWND hwnd, int dir )
         int x, y, rootX, rootY;
 
         if (!XQueryPointer( display, root_window, &root, &child, &rootX, &rootY, &x, &y, &xstate )) break;
-        x += input_pos_ofs_x;
-        y += input_pos_ofs_y;
+        x = x * input_pos_mul_x + input_pos_ofs_x;
+        y = y * input_pos_mul_y + input_pos_ofs_y;
 
         if (!(xstate & (Button1Mask << (button - 1))))
         {

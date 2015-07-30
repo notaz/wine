@@ -39,6 +39,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(fbdev);
 
 int input_pos_ofs_x;
 int input_pos_ofs_y;
+int input_pos_mul_x = 1 << 16;
+int input_pos_mul_y = 1 << 16;
 int input_rightclick_modifier;
 int input_rightclick_hack_on;
 
@@ -290,10 +292,14 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
     scaler_update(g.scaler_fd, width, height);
     input_pos_ofs_x =
     input_pos_ofs_y = 0;
+    input_pos_mul_x = (width << 16) / 800;
+    input_pos_mul_y = (height << 16) / 480;
   }
   else {
     input_pos_ofs_x = -newpos_x;
     input_pos_ofs_y = -newpos_y;
+    input_pos_mul_x =
+    input_pos_mul_y = 1 << 16;
   }
 
   // ?

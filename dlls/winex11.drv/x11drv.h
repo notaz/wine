@@ -685,6 +685,8 @@ static inline BOOL is_window_rect_fullscreen( const RECT *rect )
 /* fbdev mouse input hack */
 extern int input_pos_ofs_x DECLSPEC_HIDDEN;
 extern int input_pos_ofs_y DECLSPEC_HIDDEN;
+extern int input_pos_mul_x DECLSPEC_HIDDEN;
+extern int input_pos_mul_y DECLSPEC_HIDDEN;
 extern int input_rightclick_modifier;
 extern int input_rightclick_hack_on;
 
