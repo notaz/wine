@@ -44,9 +44,16 @@ int input_pos_mul_y = 1 << 16;
 int input_rightclick_modifier;
 int input_rightclick_hack_on;
 
-#define MODE_COUNT 10
+#define MAX_WIDTH 800
+#define MAX_HEIGHT 600
+#define MODE_COUNT 12
+
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 480
+
 static struct {
   struct x11drv_mode_info *dd_modes;
+  int current_mode;
   int fd, scaler_fd;
   int scaler_bufs;
 } g;
@@ -63,10 +70,12 @@ static int scaler_resize(int fd, int w, int h)
     return ret;
   }
 
+  fbvar.xoffset = 0;
+  fbvar.yoffset = 0;
   fbvar.xres = w;
   fbvar.yres = h;
-  fbvar.xres_virtual = 640; // wined3d/fbdev.c expects a constant
-  fbvar.yres_virtual = 480 * g.scaler_bufs;
+  fbvar.xres_virtual = MAX_WIDTH; // wined3d/fbdev.c expects a constant
+  fbvar.yres_virtual = MAX_HEIGHT * g.scaler_bufs;
 
   ret = ioctl(fd, FBIOPUT_VSCREENINFO, &fbvar);
   if (ret == -1)
@@ -114,8 +123,8 @@ static int scaler_prepare(void)
       perror("scaler: SETUP_PLANE");
   }
 
-  /* allocate more mem, if needed; scaler only used for <= 640x480 */
-  size = 640 * 480 * 2;
+  /* allocate more mem, if needed */
+  size = MAX_WIDTH * MAX_HEIGHT * 2;
   for (; size_cur < size * mem_blocks && mem_blocks > 0; mem_blocks--) {
     mi.size = size * mem_blocks;
     ret = ioctl(fd, OMAPFB_SETUP_MEM, &mi);
@@ -134,8 +143,8 @@ static int scaler_prepare(void)
   /* only fullscreen for now */
   pi.pos_x = 0;
   pi.pos_y = 0;
-  pi.out_width = 800;
-  pi.out_height = 480;
+  pi.out_width = SCREEN_WIDTH;
+  pi.out_height = SCREEN_HEIGHT;
   pi.enabled = 0;
 
   ret = ioctl(fd, OMAPFB_SETUP_PLANE, &pi);
@@ -176,9 +185,10 @@ static void scaler_enable(int fd, int enable)
 
 static void scaler_update(int fd, int w, int h)
 {
-  if (w == 800 && h == 480) {
+  if (w == SCREEN_WIDTH && h == SCREEN_HEIGHT) {
     // assume that the game entered windowed mode
     scaler_enable(fd, 0);
+    g.current_mode = -1;
     return;
   }
 
@@ -197,6 +207,11 @@ static int X11DRV_fbdev_GetCurrentMode(void)
   unsigned int dd_mode_count = X11DRV_Settings_GetModeCount();
   unsigned int i;
   int ret;
+
+  // the real fb resolution is not necessarily what wine was told
+  // it is, so just return cached mode
+  if (g.current_mode >= 0)
+    return g.current_mode;
 
   ret = ioctl(g.fd, FBIOGET_VSCREENINFO, &fbvar);
   if (ret == -1) {
@@ -223,11 +238,13 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
 {
   struct fb_var_screeninfo fbvar;
   struct omapfb_plane_info pi = { 0, };
-  int newpos_x, newpos_y;
+  int newpos_x = 0, newpos_y = 0;
+  int scaler_needed = 0;
   int width, height;
   int pos_set = 0;
   int ret;
 
+  g.current_mode = -1;
   mode = mode % MODE_COUNT;
 
   /* only set modes from the original color depth */
@@ -238,7 +255,8 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
   }
 
   width = g.dd_modes[mode].width, height = g.dd_modes[mode].height;
-  MESSAGE("Resizing X display to %dx%d\n", width, height);
+  MESSAGE("Resizing X display to %dx%d@%d\n",
+          width, height, g.dd_modes[mode].bpp);
 
   ret = ioctl(g.fd, FBIOGET_VSCREENINFO, &fbvar);
   if (ret == -1) {
@@ -252,8 +270,10 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
     return DISP_CHANGE_FAILED;
   }
 
-  newpos_x = (800 - width) / 2;
-  newpos_y = (480 - height) / 2;
+  if (width < SCREEN_WIDTH)
+    newpos_x = (SCREEN_WIDTH - width) / 2;
+  if (height < SCREEN_HEIGHT)
+    newpos_y = (SCREEN_HEIGHT - height) / 2;
   if (newpos_x < pi.pos_x || newpos_y < pi.pos_y) {
     pi.pos_x = newpos_x;
     pi.pos_y = newpos_y;
@@ -268,6 +288,15 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
   // which is what we want
   fbvar.xres = width;
   fbvar.yres = height;
+  // asume fb with g.fd can't go above screen res, but can go below
+  if (fbvar.xres > SCREEN_WIDTH) {
+    fbvar.xres = SCREEN_WIDTH;
+    scaler_needed = 1;
+  }
+  if (fbvar.yres > SCREEN_HEIGHT) {
+    fbvar.yres = SCREEN_HEIGHT;
+    scaler_needed = 1;
+  }
   fbvar.bits_per_pixel = screen_bpp;
   //fbvar.bits_per_pixel = g.dd_modes[mode].bpp;
   fbvar.xoffset = fbvar.yoffset = 0;
@@ -292,20 +321,23 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
     scaler_update(g.scaler_fd, width, height);
     input_pos_ofs_x =
     input_pos_ofs_y = 0;
-    input_pos_mul_x = (width << 16) / 800;
-    input_pos_mul_y = (height << 16) / 480;
+    input_pos_mul_x = (width << 16) / SCREEN_WIDTH;
+    input_pos_mul_y = (height << 16) / SCREEN_HEIGHT;
   }
   else {
     input_pos_ofs_x = -newpos_x;
     input_pos_ofs_y = -newpos_y;
     input_pos_mul_x =
     input_pos_mul_y = 1 << 16;
+    if (scaler_needed)
+      ERR("you might want to enable the scaler\n");
   }
 
   // ?
   XWarpPointer(gdi_display, None, DefaultRootWindow(gdi_display), 0, 0, 0, 0, 0, 0);
   XSync(gdi_display, False);
   X11DRV_resize_desktop(g.dd_modes[mode].width, g.dd_modes[mode].height);
+  g.current_mode = mode;
   return DISP_CHANGE_SUCCESSFUL;
 }
 
@@ -313,11 +345,13 @@ void X11DRV_fbdev_Init(void)
 {
   const char *devname = "/dev/fb0";
   const char *var;
+  int mode_count;
 
   if (g.fd > 0) return; /* already initialized? */
 
   g.fd = -1;
   g.scaler_fd = -1;
+  g.current_mode = -1;
 
   var = getenv("WINE_FBDEV_DEV");
   if (var != NULL)
@@ -333,18 +367,28 @@ void X11DRV_fbdev_Init(void)
   if (var != NULL && atoi(var) != 0)
     g.scaler_fd = scaler_prepare();
 
+  mode_count = MODE_COUNT;
+  if (g.scaler_fd == -1)
+    mode_count -= 2;
+
   X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
 
   g.dd_modes = X11DRV_Settings_SetHandlers("XF86VidMode", 
                                            X11DRV_fbdev_GetCurrentMode, 
                                            X11DRV_fbdev_SetCurrentMode, 
-                                           MODE_COUNT, 1);
+                                           mode_count, 1);
 
+  // update MODE_COUNT et al. if you change this
+  if (mode_count == MODE_COUNT)
+    X11DRV_Settings_AddOneMode(800, 600, 16, 60);
   X11DRV_Settings_AddOneMode(800, 480, 16, 60);
   X11DRV_Settings_AddOneMode(640, 480, 16, 60);
   X11DRV_Settings_AddOneMode(640, 400, 16, 60);
   X11DRV_Settings_AddOneMode(400, 300, 16, 60);
   X11DRV_Settings_AddOneMode(320, 240, 16, 60);
+
+  if (mode_count == MODE_COUNT)
+    X11DRV_Settings_AddOneMode(800, 600, 8, 60);
   X11DRV_Settings_AddOneMode(800, 480, 8, 60);
   X11DRV_Settings_AddOneMode(640, 480, 8, 60);
   X11DRV_Settings_AddOneMode(640, 400, 8, 60);
