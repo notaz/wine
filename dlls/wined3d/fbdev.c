@@ -77,9 +77,22 @@ static void fbdev_init(void)
         return;
     }
 
+    ret = ioctl(fbdev.fd, FBIOGET_VSCREENINFO, &fbdev.fbvar);
+    if (ret == -1) {
+        perror("FBIOGET_VSCREENINFO ioctl");
+        fbdev.init_failed = 1;
+        return;
+    }
+
+    // shouldn't change on resolution changes
+    fbdev.pitch = fbdev.fbvar.xres_virtual;
+
+    // hardcoded for now to avoid communicating with winex11
+    fbdev.height = 600;
+
     for (; buffers > 0; buffers--) {
-        fbdev.mem = mmap(0, 800*480*2 * buffers, PROT_WRITE|PROT_READ,
-                         MAP_SHARED, fbdev.fd, 0);
+        fbdev.mem = mmap(0, fbdev.pitch * fbdev.height * 2 * buffers,
+                         PROT_WRITE|PROT_READ, MAP_SHARED, fbdev.fd, 0);
         if (fbdev.mem == MAP_FAILED) {
             fprintf(stderr, "mmap '%s' %d buffer(s)", devname, buffers);
             perror("");
@@ -91,19 +104,7 @@ static void fbdev_init(void)
         fbdev.init_failed = 1;
         return;
     }
-
-    ret = ioctl(fbdev.fd, FBIOGET_VSCREENINFO, &fbdev.fbvar);
-    if (ret == -1) {
-        perror("FBIOGET_VSCREENINFO ioctl");
-        fbdev.init_failed = 1;
-        return;
-    }
-
-    // shouldn't change on resolution changes
-    fbdev.pitch = fbdev.fbvar.xres_virtual;
-
-    // hardcoded for now to simplify things
-    fbdev.height = 480;
+    memset(fbdev.mem, 0, fbdev.pitch * fbdev.height * 2 * buffers);
 
     // fbdev_to_screen assumes 16bpp...
     // note: normally should be already set up by winex11.drv/fbdev.c
@@ -121,7 +122,7 @@ static void fbdev_init(void)
     if (fbvar_update) {
         ret = ioctl(fbdev.fd, FBIOPUT_VSCREENINFO, &fbdev.fbvar);
         if (ret == -1)
-            perror("FBIOPUT_VSCREENINFO ioctl");
+            perror("wined3d/fbdev: FBIOPUT_VSCREENINFO ioctl");
     }
 
     var = getenv("WINE_FBDEV_VSYNC");
@@ -181,6 +182,7 @@ static void fbdev_do_vsync(void)
 int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
 {
     int left, right, top, bottom, pitch;
+    unsigned int byte_count;
     unsigned short *mypal;
     unsigned short *dst;
     unsigned char *src;
@@ -197,7 +199,8 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
             return 0;
     }
 
-    if (surface->resource.format->byte_count != 1)
+    byte_count = surface->resource.format->byte_count;
+    if (byte_count != 1 && byte_count != 2)
         return 0;
 
     if (surface->locations & WINED3D_LOCATION_DIB)
@@ -236,25 +239,35 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
     mypal = surface->fbdev->pal;
     dst = fbdev.mem + fbdev.buf_n * fbdev.pitch * fbdev.height
            + top * fbdev.pitch + left;
-    src += top * pitch + left;
+    src += top * pitch + left * byte_count;
     w = right - left;
 
     //ERR("loc %x %d,%d %d,%d\n", surface->locations, left, top, right, bottom);
 
-    for (h = bottom - top; h > 0; h--) {
-        for (i = 0; i + 3 < w; i += 4) {
-            __builtin_prefetch(src + i + 64);
-            v = *(unsigned int *)&src[i];
-            dst[i + 0] = mypal[(v >>  0) & 0xff];
-            dst[i + 1] = mypal[(v >>  8) & 0xff];
-            dst[i + 2] = mypal[(v >> 16) & 0xff];
-            dst[i + 3] = mypal[(v >> 24)       ];
-        }
-        for (; i < w; i++)
-            dst[i] = mypal[src[i]];
+    if (byte_count == 1) {
+        for (h = bottom - top; h > 0; h--) {
+            for (i = 0; i + 3 < w; i += 4) {
+                __builtin_prefetch(src + i + 64);
+                v = *(unsigned int *)&src[i];
+                dst[i + 0] = mypal[(v >>  0) & 0xff];
+                dst[i + 1] = mypal[(v >>  8) & 0xff];
+                dst[i + 2] = mypal[(v >> 16) & 0xff];
+                dst[i + 3] = mypal[(v >> 24)       ];
+            }
+            for (; i < w; i++)
+                dst[i] = mypal[src[i]];
 
-        src += pitch;
-        dst += fbdev.pitch;
+            src += pitch;
+            dst += fbdev.pitch;
+        }
+    }
+    else {
+        for (h = bottom - top; h > 0; h--) {
+            memcpy(dst, src, w * 2);
+
+            src += pitch;
+            dst += fbdev.pitch;
+        }
     }
 
     h = bottom - top;
