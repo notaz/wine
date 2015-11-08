@@ -51,15 +51,22 @@ int input_rightclick_hack_on;
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 480
 
+enum scaling_mode {
+  SMODE_ONLY_DOWN = 0,
+  SMODE_ONLY_FULLSCREEN,
+  SMODE_ONLY_4_3,
+};
+
 static struct {
   struct x11drv_mode_info *dd_modes;
   int current_mode;
+  enum scaling_mode scaler_mode;
   int fd, scaler_fd;
   int scaler_bufs;
 } g;
 
 
-static int scaler_resize(int fd, int w, int h)
+static int scaler_resize_fb(int fd, int w, int h)
 {
   struct fb_var_screeninfo fbvar;
   int ret;
@@ -140,11 +147,6 @@ static int scaler_prepare(void)
   }
   g.scaler_bufs = mem_blocks;
 
-  /* only fullscreen for now */
-  pi.pos_x = 0;
-  pi.pos_y = 0;
-  pi.out_width = SCREEN_WIDTH;
-  pi.out_height = SCREEN_HEIGHT;
   pi.enabled = 0;
 
   ret = ioctl(fd, OMAPFB_SETUP_PLANE, &pi);
@@ -153,7 +155,7 @@ static int scaler_prepare(void)
     goto out;
   }
 
-  ret = scaler_resize(fd, 640, 480);
+  ret = scaler_resize_fb(fd, 640, 480);
 
 out:
   if (ret != 0) {
@@ -163,7 +165,7 @@ out:
   return fd;
 }
 
-static void scaler_enable(int fd, int enable)
+static void scaler_setup(int fd, int w, int h, int enable)
 {
   struct omapfb_plane_info pi;
   int ret;
@@ -175,25 +177,52 @@ static void scaler_enable(int fd, int enable)
     return;
   }
 
-  if (pi.enabled != enable) {
-    pi.enabled = enable;
-    ret = ioctl(fd, OMAPFB_SETUP_PLANE, &pi);
-    if (ret != 0)
-      perror("scaler: SETUP_PLANE");
+  if (enable) {
+    switch (g.scaler_mode) {
+    case SMODE_ONLY_DOWN:
+    default:
+      pi.out_width = w;
+      pi.out_height = h;
+      break;
+    case SMODE_ONLY_FULLSCREEN:
+      pi.out_width = SCREEN_WIDTH;
+      pi.out_height = SCREEN_HEIGHT;
+      break;
+    case SMODE_ONLY_4_3:
+      pi.out_width = SCREEN_HEIGHT * 4 / 3;
+      pi.out_height = SCREEN_HEIGHT;
+      break;
+    }
+    if (pi.out_width > SCREEN_WIDTH)
+      pi.out_width = SCREEN_WIDTH;
+    if (pi.out_height > SCREEN_HEIGHT)
+      pi.out_height = SCREEN_HEIGHT;
+    pi.pos_x = (SCREEN_WIDTH - pi.out_width) / 2;
+    pi.pos_y = (SCREEN_HEIGHT - pi.out_height) / 2;
+
+    input_pos_ofs_x = -pi.pos_x;
+    input_pos_ofs_y = -pi.pos_y;
+    input_pos_mul_x = (w << 16) / pi.out_width;
+    input_pos_mul_y = (h << 16) / pi.out_height;
   }
+
+  pi.enabled = enable;
+  ret = ioctl(fd, OMAPFB_SETUP_PLANE, &pi);
+  if (ret != 0)
+    perror("scaler: SETUP_PLANE");
 }
 
 static void scaler_update(int fd, int w, int h)
 {
   if (w == SCREEN_WIDTH && h == SCREEN_HEIGHT) {
     // assume that the game entered windowed mode
-    scaler_enable(fd, 0);
+    scaler_setup(fd, w, h, 0);
     g.current_mode = -1;
     return;
   }
 
-  scaler_resize(fd, w, h);
-  scaler_enable(fd, 1);
+  scaler_resize_fb(fd, w, h);
+  scaler_setup(fd, w, h, 1);
 }
 
 static int XVidModeErrorHandler(Display *dpy, XErrorEvent *event, void *arg)
@@ -317,20 +346,17 @@ static LONG X11DRV_fbdev_SetCurrentMode(int mode)
       perror("OMAPFB_SETUP_PLANE ioctl (after)");
   }
 
-  if (g.scaler_fd != -1) {
+  if (g.scaler_fd != -1)
+    // will also set up input_pos_*
     scaler_update(g.scaler_fd, width, height);
-    input_pos_ofs_x =
-    input_pos_ofs_y = 0;
-    input_pos_mul_x = (width << 16) / SCREEN_WIDTH;
-    input_pos_mul_y = (height << 16) / SCREEN_HEIGHT;
-  }
-  else {
+  else if (scaler_needed)
+    ERR("you might want to enable the scaler\n");
+
+  if (g.scaler_fd == -1) {
     input_pos_ofs_x = -newpos_x;
     input_pos_ofs_y = -newpos_y;
     input_pos_mul_x =
     input_pos_mul_y = 1 << 16;
-    if (scaler_needed)
-      ERR("you might want to enable the scaler\n");
   }
 
   // ?
@@ -364,8 +390,12 @@ void X11DRV_fbdev_Init(void)
   }
 
   var = getenv("WINE_FBDEV_USE_SCALER");
-  if (var != NULL && atoi(var) != 0)
+  if (var != NULL && atoi(var) != 0) {
     g.scaler_fd = scaler_prepare();
+    var = getenv("WINE_FBDEV_SCALER_MODE");
+    if (var != NULL)
+      g.scaler_mode = atoi(var);
+  }
 
   mode_count = MODE_COUNT;
   if (g.scaler_fd == -1)
