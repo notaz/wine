@@ -1104,6 +1104,14 @@ void X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
            hwnd, data->whole_window, rect.left, rect.top, rect.right-rect.left, rect.bottom-rect.top,
            event->x, event->y, event->width, event->height );
 
+    // pandora hack
+    if (data->window_rect.bottom - data->window_rect.top == 600
+        && event->height == 480)
+    {
+        TRACE("pandora height hack - adjust height back to 600\n");
+        rect.bottom = pos.y + 600;
+    }
+
     X11DRV_X_to_window_rect( data, &rect );
     if (root_coords) MapWindowPoints( 0, parent, (POINT *)&rect, 2 );
 
