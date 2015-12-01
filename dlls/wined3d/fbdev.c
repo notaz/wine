@@ -179,6 +179,48 @@ static void fbdev_do_vsync(void)
     estimate_x3 = get_usec_x3() - 1000 * 3;
 }
 
+#ifdef __arm__
+void fbdev_to_screen_asm(unsigned short *dst, unsigned char *src,
+  unsigned short *mypal, int w, // r2, r3
+  int h, int pitch_d, int pitch_s);
+asm("                            \n\
+fbdev_to_screen_asm:             \n\
+    push  {r4-r10,lr}            \n\
+    ldr   r6, [sp, #4*8+4] @ p_d \n\
+    ldr   r7, [sp, #4*8+8] @ p_s \n\
+    movw  r9, #0x1fe             \n\
+    ldr   lr, [sp, #4*8+0] @ h   \n\
+    sub   r6, r3, lsl #1         \n\
+    sub   r7, r3                 \n\
+0:                               \n\
+    mov   r8, r3                 \n\
+    subs  lr, #1                 \n\
+    poplt {r4-r10,pc}            \n\
+                                 \n\
+1:  ldr   r12, [r1], #4          \n\
+    tst   r1, #0x3c              \n\
+    and   r4, r9, r12, lsl #1    \n\
+    and   r5, r9, r12, lsr #7    \n\
+    and   r10,r9, r12, lsr #15   \n\
+    and   r12,r9, r12, lsr #23   \n\
+    ldrh  r4, [r2, r4]           \n\
+    ldrh  r5, [r2, r5]           \n\
+    ldrh  r10,[r2, r10]          \n\
+    ldrh  r12,[r2, r12]          \n\
+    bne   9f                     \n\
+    pld   [r1, #64]              \n\
+9:  pkhbt r4, r4,  r5,  lsl #16  \n\
+    pkhbt r5, r10, r12, lsl #16  \n\
+    subs  r8, #4                 \n\
+    strd  r4, r5, [r0], #8       \n\
+    bgt   1b                     \n\
+                                 \n\
+    add   r0, r6                 \n\
+    add   r1, r7                 \n\
+    b     0b                     \n\
+");
+#endif
+
 int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
 {
     int left, right, top, bottom, pitch;
@@ -236,16 +278,23 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
         return 0;
     }
 
-    mypal = surface->fbdev->pal;
+    src += top * pitch + left * byte_count;
+    __builtin_prefetch(src);
     dst = fbdev.mem + fbdev.buf_n * fbdev.pitch * fbdev.height
            + top * fbdev.pitch + left;
-    src += top * pitch + left * byte_count;
+    mypal = surface->fbdev->pal;
     w = right - left;
+    h = bottom - top;
 
     //ERR("loc %x %d,%d %d,%d\n", surface->locations, left, top, right, bottom);
 
     if (byte_count == 1) {
-        for (h = bottom - top; h > 0; h--) {
+#ifdef __arm__
+        if ((((long)dst | fbdev.pitch) & 7) == 0 && (w & 3) == 0)
+            fbdev_to_screen_asm(dst, src, mypal, w, h, fbdev.pitch * 2, pitch);
+        else
+#endif
+        for (; h > 0; h--) {
             for (i = 0; i + 3 < w; i += 4) {
                 __builtin_prefetch(src + i + 64);
                 v = *(unsigned int *)&src[i];
@@ -262,7 +311,7 @@ int fbdev_to_screen(struct wined3d_surface *surface, const RECT *rect)
         }
     }
     else {
-        for (h = bottom - top; h > 0; h--) {
+        for (; h > 0; h--) {
             memcpy(dst, src, w * 2);
 
             src += pitch;
