@@ -36,6 +36,11 @@ static inline struct ddraw_surface *impl_from_IDirectDrawGammaControl(IDirectDra
     return CONTAINING_RECORD(iface, struct ddraw_surface, IDirectDrawGammaControl_iface);
 }
 
+// for zero-copy hack
+#define multiply_matrix multiply_matrix_d3d
+#include "../wined3d/wined3d_private.h"
+#undef multiply_matrix
+
 /* This is slow, of course. Also, in case of locks, we can't prevent other
  * applications from drawing to the screen while we've locked the frontbuffer.
  * We'd like to do this in wined3d instead, but for that to work wined3d needs
@@ -67,11 +72,33 @@ static HRESULT ddraw_surface_update_frontbuffer(struct ddraw_surface *surface, c
 
     if (surface->ddraw->swapchain_window)
     {
+        struct wined3d_surface *d3ds_d, *d3ds_s;
+        struct wined3d_map_desc map_desc;
+
         /* Nothing to do, we control the frontbuffer, or at least the parts we
          * care about. */
         if (read)
             return DD_OK;
 
+        d3ds_d = surface->ddraw->wined3d_frontbuffer;
+        d3ds_s = surface->wined3d_surface;
+        if (   d3ds_d->locations == WINED3D_LOCATION_DIB
+            && d3ds_s->locations == WINED3D_LOCATION_DIB
+            && d3ds_d->resource.depth == d3ds_s->resource.depth)
+        {
+            hr = wined3d_surface_map(d3ds_d, &map_desc, rect, 0);
+            if (SUCCEEDED(hr))
+            {
+                // zero-copy HACK: use src surface directly
+                void *data_d = d3ds_d->dib.bitmap_data;
+
+                d3ds_d->dib.bitmap_data = d3ds_s->dib.bitmap_data;
+                hr = wined3d_surface_unmap(d3ds_d);
+                d3ds_d->dib.bitmap_data = data_d;
+
+                return hr;
+            }
+        }
         return wined3d_surface_blt(surface->ddraw->wined3d_frontbuffer, rect,
                 surface->wined3d_surface, rect, 0, NULL, WINED3D_TEXF_POINT);
     }
