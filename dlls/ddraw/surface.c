@@ -4033,11 +4033,24 @@ static HRESULT WINAPI ddraw_surface7_BltFast(IDirectDrawSurface7 *iface, DWORD d
 
     if (src->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         hr = ddraw_surface_update_frontbuffer(src, rsrc, TRUE);
+
+    if (SUCCEEDED(hr) && (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+        && !(flags & (WINEDDBLT_KEYSRC | WINEDDBLT_KEYDEST))
+        && This->ddraw->hack_no_front_blit)
+    {
+        // blit screen directly from the source,
+        // This->wined3d_surface not updated
+        hr = ddraw_surface_update_frontbuffer(src, &dst_rect, FALSE);
+        goto unlock;
+    }
+
     if (SUCCEEDED(hr))
         hr = wined3d_surface_blt(This->wined3d_surface, &dst_rect,
                 src->wined3d_surface, rsrc, flags, NULL, WINED3D_TEXF_POINT);
     if (SUCCEEDED(hr) && (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
         hr = ddraw_surface_update_frontbuffer(This, &dst_rect, FALSE);
+
+unlock:
     wined3d_mutex_unlock();
 
     switch(hr)
@@ -5554,6 +5567,13 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     texture->version = version;
     texture->surface_desc = *surface_desc;
     desc = &texture->surface_desc;
+
+    if ((desc->ddsCaps.dwCaps & DDSCAPS_FLIP) && ddraw->hack_no_flip_cap)
+    {
+        MESSAGE("hack: rejecting DDSCAPS_FLIP.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
+        return DDERR_NOFLIPHW;
+    }
 
     /* Ensure DDSD_CAPS is always set. */
     desc->dwFlags |= DDSD_CAPS;

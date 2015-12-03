@@ -4854,6 +4854,7 @@ static const struct wined3d_device_parent_ops ddraw_wined3d_device_parent_ops =
 
 HRESULT ddraw_init(struct ddraw *ddraw, enum wined3d_device_type device_type)
 {
+    const char *var;
     WINED3DCAPS caps;
     DWORD flags;
     HRESULT hr;
@@ -4902,6 +4903,13 @@ HRESULT ddraw_init(struct ddraw *ddraw, enum wined3d_device_type device_type)
     }
 
     list_init(&ddraw->surface_list);
+
+    var = getenv("WINE_DDRAW_NO_FLIP_CAP");
+    if (var != NULL && atoi(var) != 0)
+        ddraw->hack_no_flip_cap = 1;
+    var = getenv("WINE_DDRAW_NO_FRONT_BLIT");
+    if (var != NULL && atoi(var) != 0)
+        ddraw->hack_no_front_blit = 1;
 
     return DD_OK;
 }

@@ -107,6 +107,9 @@ struct ddraw
     /* FVF management */
     struct FvfToDecl       *decls;
     UINT                    numConvertedDecls, declArraySize;
+
+    UINT                    hack_no_front_blit:1;
+    UINT                    hack_no_flip_cap:1;
 };
 
 #define DDRAW_WINDOW_CLASS_NAME "DirectDrawDeviceWnd"
