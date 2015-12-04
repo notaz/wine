@@ -492,6 +492,15 @@ NTSTATUS WINAPI NtQueryPerformanceCounter( LARGE_INTEGER *counter, LARGE_INTEGER
  */
 ULONG WINAPI NtGetTickCount(void)
 {
+#ifdef HAVE_CLOCK_GETTIME
+    struct timespec ts;
+    if (0
+#ifdef CLOCK_MONOTONIC_RAW
+        || !clock_gettime( CLOCK_MONOTONIC_RAW, &ts )
+#endif
+        || !clock_gettime( CLOCK_MONOTONIC, &ts ))
+        return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+#endif
     return monotonic_counter() / TICKSPERMSEC;
 }
 

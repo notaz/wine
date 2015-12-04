@@ -198,7 +198,7 @@ ULONGLONG WINAPI GetTickCount64(void)
  */
 DWORD WINAPI GetTickCount(void)
 {
-    return GetTickCount64();
+    return NtGetTickCount();
 }
 
 /******************************************************************************
